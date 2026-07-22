@@ -1,20 +1,20 @@
-# build artifacts
-build/
-*.so
-.out.hvm
-*.o
 
-# local model weights (never commit)
-*.gguf
-models/
-weights/
-
-# logs / runtime
-*.log
-ollama.log
-
-# editor / OS
-.DS_Store
 *~
+build/
+# build artifacts
+.DS_Store
+# editor / OS
+*.gguf
 .idea/
+# local model weights (never commit)
+*.log
+# logs / runtime
+models/
+*.o
+ollama.log
+.out.hvm
+proxy/bun.lock
+proxy/node_modules/
+*.so
 .vscode/
+weights/

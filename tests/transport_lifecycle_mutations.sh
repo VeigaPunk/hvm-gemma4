@@ -146,7 +146,7 @@ not_ok() { printf 'not ok %02d - %s\n' "$((PASS + FAIL + 1))" "$1"; FAIL=$((FAIL
 check() { if eval "$2"; then ok "$1"; else not_ok "$1"; fi; }
 
 set -e
-printf '1..25\n'
+printf '1..27\n'
 
 reset_case; export HVM_PATH=$TMP/not-executable CURL_MODE=ready
 run_case pin-bypass
@@ -163,6 +163,10 @@ check 'ready service bypasses Ollama startup' '! grep -q "^ollama " "$MUT_LOG" &
 reset_case; export HVM_PATH=/bin/true CURL_MODE=delayed CURL_READY_AT=2 OLLAMA_MODELS=/custom/models OLLAMA_FLASH_ATTENTION=0 OLLAMA_KV_CACHE_TYPE=q8_0 OLLAMA_NUM_PARALLEL=7 OLLAMA_MAX_LOADED_MODELS=3
 run_case env-overrides
 check 'server env overrides reach owned Ollama startup' 'grep -Fq "OLLAMA_MODELS=/custom/models" "$MUT_LOG" && grep -Fq "OLLAMA_FLASH_ATTENTION=0" "$MUT_LOG" && grep -Fq "OLLAMA_KV_CACHE_TYPE=q8_0" "$MUT_LOG" && grep -Fq "OLLAMA_NUM_PARALLEL=7" "$MUT_LOG" && grep -Fq "OLLAMA_MAX_LOADED_MODELS=3" "$MUT_LOG"'
+
+reset_case; export HVM_PATH=/bin/true CURL_MODE=delayed CURL_READY_AT=2
+run_case selected-defaults
+check 'selected serving defaults reach owned Ollama startup' 'grep -Fq "OLLAMA_KV_CACHE_TYPE=q8_0" "$MUT_LOG" && grep -Fq "OLLAMA_NUM_PARALLEL=8" "$MUT_LOG" && grep -Fq "OLLAMA_MAX_LOADED_MODELS=1" "$MUT_LOG"'
 
 reset_case; export HVM_PATH=/bin/true CURL_MODE=identity
 run_case false-positive
@@ -221,6 +225,10 @@ check 'Bend exit status propagates through exec' '[[ $STATUS == 7 ]]'
 reset_case; export HVM_PATH=/bin/true CURL_MODE=ready BEND_STDOUT=OUT_SENTINEL BEND_STDERR=ERR_SENTINEL
 run_case streams
 check 'Bend stdout and stderr remain separated' 'grep -Fxq OUT_SENTINEL "$TMP/out" && grep -Fxq ERR_SENTINEL "$TMP/err" && ! grep -q ERR_SENTINEL "$TMP/out"'
+
+reset_case; export HVM_PATH=/bin/true CURL_MODE=ready BEND_STDOUT='HVM_GEMMA_ERROR: model unavailable'
+run_case bridge-error
+check 'bridge error text becomes nonzero launcher status' '[[ $STATUS == 1 ]] && grep -Fxq "HVM_GEMMA_ERROR: model unavailable" "$TMP/out"'
 
 reset_case; export HVM_PATH=/bin/true CURL_MODE=identity OLLAMA_ENDPOINT=http://127.0.0.1:11434
 run_case endpoint-parity

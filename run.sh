@@ -24,6 +24,7 @@ else
 fi
 umask 077
 PROMPT_FILE=$(mktemp)
+BEND_OUTPUT=$(mktemp)
 printf '%s' "$PROMPT" >"$PROMPT_FILE"
 unset HVM_GEMMA_PROMPT
 
@@ -44,7 +45,7 @@ cleanup() {
     STARTED_OLLAMA=0
     OLLAMA_PID=
   fi
-  rm -f -- "$PROMPT_FILE"
+  rm -f -- "$PROMPT_FILE" "$BEND_OUTPUT"
 }
 
 terminate_owned_ollama() {
@@ -158,8 +159,12 @@ if ! ollama_ready_loop; then
 fi
 
 set +e
-HVM_GEMMA_PROMPT_FILE="$PROMPT_FILE" bend --hvm-bin "$HVM_PATH" run-c main.bend -s
+HVM_GEMMA_PROMPT_FILE="$PROMPT_FILE" bend --hvm-bin "$HVM_PATH" run-c main.bend -s >"$BEND_OUTPUT"
 STATUS=$?
 set -e
+cat -- "$BEND_OUTPUT"
+if [[ "$STATUS" == 0 ]] && grep -q '^HVM_GEMMA_ERROR:' "$BEND_OUTPUT"; then
+  STATUS=1
+fi
 cleanup
 exit "$STATUS"

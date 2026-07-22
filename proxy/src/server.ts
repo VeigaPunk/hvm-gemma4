@@ -10,10 +10,14 @@
 const PORT = Number(process.env.XBREED_HVM_PORT ?? 11435);
 const HOST = process.env.XBREED_HVM_HOST ?? "127.0.0.1";
 const GEMMA_BIN = process.env.HVM_GEMMA_BIN ?? "gemma-hvm";
-const DEFAULT_MODEL = process.env.HVM_GEMMA_MODEL ?? "gemma4:26b";
+const DEFAULT_MODEL = process.env.HVM_GEMMA_MODEL ?? "gemma4-hvm:official-q4";
 const USE_XBREED = (process.env.XBREED_HVM_VIA ?? "gemma-hvm") === "xbreed";
 const TIMEOUT_MS = Number(process.env.XASK_TIMEOUT_SECS ?? 600) * 1000;
-const BEARER = process.env.XBREED_HVM_API_KEY ?? "xbreed-hvm";
+const BEARER = process.env.XBREED_HVM_API_KEY ?? "";
+const LOOPBACK_HOST = HOST === "127.0.0.1" || HOST === "::1" || HOST === "localhost";
+if (!LOOPBACK_HOST && !BEARER) {
+  throw new Error("XBREED_HVM_API_KEY is required when binding outside loopback");
+}
 
 const MODEL_CATALOG = [
   "gemma4:26b",
@@ -51,9 +55,9 @@ function json(data: unknown, status = 200): Response {
 
 function authOk(req: Request): boolean {
   const h = req.headers.get("authorization") ?? "";
-  if (!h) return true;
+  if (!BEARER) return LOOPBACK_HOST && !h;
   const token = h.replace(/^Bearer\s+/i, "").trim();
-  return token === BEARER || token === "ollama" || token === "xbreed-hvm";
+  return token.length > 0 && token === BEARER;
 }
 
 function partText(p: ContentPart): string {
@@ -179,7 +183,11 @@ async function runThroughHvm(prompt: string, model: string): Promise<string> {
     const err = stderr.trim() || stdout.trim() || `exit ${code}`;
     throw new Error(`HVM gemma failed: ${err}`);
   }
-  return stripHvmStats(stdout);
+  const text = stripHvmStats(stdout);
+  if (text.startsWith("HVM_GEMMA_ERROR:")) {
+    throw new Error(text);
+  }
+  return text;
 }
 
 function modelsList() {

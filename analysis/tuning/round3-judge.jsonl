@@ -1,0 +1,5 @@
+{"round":3,"audit_hash":"sha256:f6cbad3dcf3d7305fd2cbfc20b9d26cf64112d15ab065671332a001fd665d5f3","source_map_unseen":true,"evidence_audit":{"with":4,"without":0,"dropped":0,"spoof_flagged":0}}
+{"move_id":"R3-M01","verdict":"retain","improves":["selected-default mutation sensitivity"],"harm":"none"}
+{"move_id":"R3-M02","verdict":"retain bounded sentinel fix","improves":["failure observability"],"harm":"buffers Bend stdout"}
+{"move_id":"R3-M03","verdict":"retain pending HTTP integration follow-up","improves":["proxy route fidelity","auth safety"],"harm":"non-loopback now requires explicit key"}
+{"move_id":"R3-M04","verdict":"retain ceiling; reject universal-best claim","improves":["claim honesty"],"harm":"none"}

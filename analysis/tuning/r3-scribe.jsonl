@@ -1,0 +1,7 @@
+{"round":3,"audit_hash":"sha256:f6cbad3dcf3d7305fd2cbfc20b9d26cf64112d15ab065671332a001fd665d5f3","date":"2026-07-22","inputs":{"synthesis":"analysis/tuning/round3-synthesis.jsonl","judge":"analysis/tuning/round3-judge.jsonl","diff":"proxy/run-proxy.sh,proxy/src/server.ts,run.sh,tests/transport_lifecycle_mutations.sh","tests":["tests/transport_lifecycle_mutations.sh","tests/generation_option_request_oracle.sh","make check","tests/benchmark_manifest.sh","cd proxy && npm run typecheck"]}}
+{"move_id":"R3-M01","axis":"selected_default_mutation_sensitivity","roster":"mutation-tester","verdict":"retain","harm":"none","evidence_status":"SYNTHESIS_READY","with":"4","without":"0"}
+{"move_id":"R3-M02","axis":"failure_observability","roster":"reviewer","verdict":"retain","harm":"buffers stdout","evidence_status":"SYNTHESIS_READY"}
+{"move_id":"R3-M03","axis":"proxy_default_auth_parity","roster":"connector","verdict":"retain","harm":"non-loopback now requires explicit key","evidence_status":"SYNTHESIS_READY"}
+{"move_id":"R3-M04","axis":"benchmark_validity","roster":"distiller+reviewer","verdict":"retain-ceiling","harm":"none","evidence_status":"SYNTHESIS_READY"}
+{"current_status":{"request_oracle_groups":21,"request_oracle_fail":0,"lifecycle_assertions":27,"lifecycle_fail":0,"proxy_typecheck":"pass"}}
+{"commit_delta":{"paths":["proxy/run-proxy.sh","proxy/src/server.ts","run.sh","tests/transport_lifecycle_mutations.sh"],"audit_hash":"sha256:f6cbad3dcf3d7305fd2cbfc20b9d26cf64112d15ab065671332a001fd665d5f3"}}

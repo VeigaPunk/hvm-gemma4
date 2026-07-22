@@ -1,0 +1,50 @@
+{
+  "schema_version": "1.0",
+  "suite": "gemma4-hvm-local-tuning-v1",
+  "model_digest_source": "ollama_show",
+  "cache_state_source": "ollama_ps",
+  "checks": {
+    "prompt_count": 6,
+    "prompt_hash": "d54a6ec2bcff7a9a695f774480da9c4a46bcf26049e4ac5ce6b6016d43453afb"
+  },
+  "calibration": [
+    {
+      "id": "cal-exact-format-01",
+      "split": "calibration",
+      "case_type": "exact-format",
+      "prompt": "Return ONLY the exact string: pong"
+    },
+    {
+      "id": "cal-arith-01",
+      "case_type": "arithmetic",
+      "split": "calibration",
+      "prompt": "Compute 17 + 29. Reply with only the integer, no punctuation."
+    },
+    {
+      "id": "cal-code-01",
+      "case_type": "concise-coding-schema",
+      "split": "calibration",
+      "prompt": "Write a one-line Python function add(a, b) that returns a + b."
+    }
+  ],
+  "heldout": [
+    {
+      "id": "hold-exact-format-01",
+      "split": "heldout",
+      "case_type": "exact-format",
+      "prompt": "Output exactly this JSON object: {\"ok\":true}"
+    },
+    {
+      "id": "hold-arith-01",
+      "split": "heldout",
+      "case_type": "arithmetic",
+      "prompt": "What is 12 * 7? Return only the integer."
+    },
+    {
+      "id": "hold-code-01",
+      "split": "heldout",
+      "case_type": "concise-coding-schema",
+      "prompt": "Provide one-line JavaScript arrow syntax for squaring one number: x => x*x"
+    }
+  ]
+}

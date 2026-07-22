@@ -35,7 +35,7 @@ prompt
   → HVM2
   → IO/DyLib → build/libhvm_gemma.so (gemma_generate)
   → HTTP POST http://127.0.0.1:11434/api/generate
-  → local gemma4:26b (or HVM_GEMMA_MODEL)
+  → local gemma4-hvm:official-q4 (or HVM_GEMMA_MODEL)
 ```
 
 Replacing the tensor engine would mean a full Gemma 4 loader, tokenizer, quantized ops, mixed attention, KV cache, MoE router, sampler, and conformance suite **inside** HVM. This bridge deliberately does not do that.
@@ -45,7 +45,7 @@ Replacing the tensor engine would mean a full Gemma 4 loader, tokenizer, quantiz
 - `bend` + **HVM 2.0.22** (set `HVM_PATH` / `HVM_ROOT` if not in the cargo registry)
 - `cc`, `libcurl`, `json-c` (`pkg-config`)
 - `ollama` with a Gemma 4 model loaded
-- `jq` (prompt encoding)
+- `jq` (test and readiness checks)
 - optional: `hf` CLI for `./download-model.sh`
 
 ## Env
@@ -62,10 +62,21 @@ Replacing the tensor engine would mean a full Gemma 4 loader, tokenizer, quantiz
 | `OLLAMA_ENDPOINT` | Ollama base URL (default `http://127.0.0.1:11434`) |
 | `HVM_GEMMA_ENDPOINT` | Bridge-specific Ollama URL override; takes precedence over `OLLAMA_ENDPOINT` |
 | `OLLAMA_NUM_PARALLEL` | Server parallel request slots when this script starts Ollama (default `128`) |
+| `OLLAMA_MODELS` | Ollama model store when this script starts Ollama (default `${XDG_CACHE_HOME:-$HOME/.cache}/ollama/models`) |
 | `HVM_PATH` | HVM binary for `bend --hvm-bin` |
 | `HVM_ROOT` | HVM crate source for `make` includes |
 | `HVM_GEMMA_BIN` | xbreed override for this entrypoint |
 | `HF_TOKEN` | optional; used by `hf download` if set |
+
+`run.sh` writes the prompt to a mode-`0600` temporary file and passes only its
+path to the native bridge. The launcher removes the file on normal exit and on
+signals. This avoids putting prompt bytes in the Bend/HVM environment, including
+for prompts larger than 128 KiB. `HVM_GEMMA_PROMPT_FILE` is launcher-internal;
+callers should pass prompt arguments to `run.sh` rather than setting it.
+
+`download-model.sh` stores weights under
+`${XDG_DATA_HOME:-$HOME/.local/share}/hvm-gemma4/models` by default. Set
+`MODEL_DIR` to choose another location.
 
 ## License / weights
 

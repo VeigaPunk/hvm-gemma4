@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
+#include <stdint.h>
 
 typedef struct {
   char *data;
@@ -158,7 +159,7 @@ static int env_keep_alive(const char *name, const char *fallback, char *value, s
 }
 
 static int read_file_bytes(const char *path, char **buf_out, size_t *len_out) {
-  int fd = open(path, O_RDONLY);
+  int fd = open(path, O_RDONLY | O_CLOEXEC);
   if (fd < 0) {
     return 0;
   }
@@ -173,6 +174,11 @@ static int read_file_bytes(const char *path, char **buf_out, size_t *len_out) {
 
   for (;;) {
     if (len == cap) {
+      if (cap > (SIZE_MAX - 1) / 2) {
+        free(buf);
+        close(fd);
+        return 0;
+      }
       size_t next = cap * 2;
       char *grown = realloc(buf, next + 1);
       if (grown == NULL) {
@@ -223,24 +229,21 @@ static Port inject_text(Net *net, const char *text) {
 }
 
 Port gemma_generate(Net *net, Book *book, Port arg) {
-  Str prompt = readback_str(net, book, arg);
-  const char *prompt_text = getenv("HVM_GEMMA_PROMPT");
-  size_t prompt_length = prompt.len;
+  Str prompt = {0};
+  const char *prompt_text = NULL;
+  size_t prompt_length = 0;
   char *prompt_file_buf = NULL;
   const char *prompt_file = getenv("HVM_GEMMA_PROMPT_FILE");
-  int prompt_from_file = 0;
   if (prompt_file != NULL && prompt_file[0] != '\0') {
     if (!read_file_bytes(prompt_file, &prompt_file_buf, &prompt_length)) {
       free(prompt.buf);
       return inject_text(net, "HVM_GEMMA_ERROR: failed to read prompt file");
     }
     prompt_text = prompt_file_buf;
-    prompt_from_file = 1;
-  }
-  if (prompt_text == NULL) {
+  } else {
+    prompt = readback_str(net, book, arg);
     prompt_text = prompt.buf;
-  } else if (!prompt_from_file) {
-    prompt_length = strlen(prompt_text);
+    prompt_length = prompt.len;
   }
 
   const char *model = NULL;
@@ -262,6 +265,7 @@ Port gemma_generate(Net *net, Book *book, Port arg) {
       !env_double("HVM_GEMMA_TEMPERATURE", 0.0, 0.0, 2.0, &temperature) ||
       !env_bool("HVM_GEMMA_THINK", 0, &think) ||
       !env_int("HVM_GEMMA_HTTP_TIMEOUT", 300, 1, 86400, &timeout_seconds)) {
+    free(prompt_file_buf);
     free(prompt.buf);
     return inject_text(net, "HVM_GEMMA_ERROR: invalid generation environment");
   }

@@ -22,25 +22,61 @@ if (( $# == 0 )); then
 else
   PROMPT="$*"
 fi
+umask 077
 PROMPT_FILE=$(mktemp)
-trap 'rm -f -- "$PROMPT_FILE"' EXIT
 printf '%s' "$PROMPT" >"$PROMPT_FILE"
+unset HVM_GEMMA_PROMPT
 
-OLLAMA_ENDPOINT=${OLLAMA_ENDPOINT:-http://127.0.0.1:11434}
+OLLAMA_ENDPOINT=${HVM_GEMMA_ENDPOINT:-${OLLAMA_ENDPOINT:-http://127.0.0.1:11434}}
 OLLAMA_READY_TIMEOUT=${OLLAMA_READY_TIMEOUT:-15}
 OLLAMA_READY_MAX_ATTEMPTS=${OLLAMA_READY_MAX_ATTEMPTS:-60}
 OLLAMA_READY_INTERVAL=${OLLAMA_READY_INTERVAL:-0.25}
 OLLAMA_READY_REQUEST_TIMEOUT=${OLLAMA_READY_REQUEST_TIMEOUT:-2}
 OLLAMA_CONNECT_TIMEOUT=${OLLAMA_CONNECT_TIMEOUT:-2}
 OLLAMA_MAX_TIME=${OLLAMA_MAX_TIME:-5}
+OLLAMA_SHUTDOWN_GRACE=${OLLAMA_SHUTDOWN_GRACE:-2}
 STARTED_OLLAMA=0
 OLLAMA_PID=
 
 cleanup() {
   if [[ "$STARTED_OLLAMA" == 1 && -n "$OLLAMA_PID" ]]; then
-    kill "$OLLAMA_PID" 2>/dev/null || true
-    wait "$OLLAMA_PID" 2>/dev/null || true
+    terminate_owned_ollama
+    STARTED_OLLAMA=0
+    OLLAMA_PID=
   fi
+  rm -f -- "$PROMPT_FILE"
+}
+
+terminate_owned_ollama() {
+  local grace_ns start_ns elapsed_ns
+
+  kill -TERM "$OLLAMA_PID" 2>/dev/null || true
+
+  grace_ns=$(awk -v value="$OLLAMA_SHUTDOWN_GRACE" 'BEGIN {
+      if (value ~ /^[0-9]+(\.[0-9]+)?$/) {
+        printf "%d", value * 1000000000;
+      } else if (value ~ /^0+$/) {
+        print 0;
+      } else {
+        print 2000000000;
+      }
+    }')
+  if (( grace_ns <= 0 )); then
+    kill -KILL "$OLLAMA_PID" 2>/dev/null || true
+    wait "$OLLAMA_PID" 2>/dev/null || true
+    return
+  fi
+  start_ns=$(date +%s%N)
+
+  while kill -0 "$OLLAMA_PID" 2>/dev/null; do
+    elapsed_ns=$(( $(date +%s%N) - start_ns ))
+    if (( elapsed_ns >= grace_ns )); then
+      kill -KILL "$OLLAMA_PID" 2>/dev/null || true
+      break
+    fi
+    sleep 0.05
+  done
+  wait "$OLLAMA_PID" 2>/dev/null || true
 }
 
 on_signal() {
@@ -56,12 +92,16 @@ trap 'on_signal INT' INT
 trap 'on_signal TERM' TERM
 
 ollama_ready() {
-  local command=(curl -fsS --connect-timeout "$OLLAMA_CONNECT_TIMEOUT" --max-time "$OLLAMA_MAX_TIME" "$OLLAMA_ENDPOINT/")
+  local command=(curl -fsS --connect-timeout "$OLLAMA_CONNECT_TIMEOUT" --max-time "$OLLAMA_MAX_TIME" "$OLLAMA_ENDPOINT/api/version")
+  local response
+
   if [[ -x /usr/bin/timeout ]]; then
-    /usr/bin/timeout "$OLLAMA_READY_REQUEST_TIMEOUT" "${command[@]}" >/dev/null 2>&1
+    response=$(/usr/bin/timeout "$OLLAMA_READY_REQUEST_TIMEOUT" "${command[@]}" 2>/dev/null) || return 1
   else
-    "${command[@]}" >/dev/null 2>&1
+    response=$("${command[@]}" 2>/dev/null) || return 1
   fi
+
+  jq -e '.version? and (.version | type == "string" and test("^[0-9]+(\\.[0-9]+){1,2}$"))' >/dev/null 2>&1 <<<"$response"
 }
 
 ollama_ready_loop() {
@@ -71,13 +111,12 @@ ollama_ready_loop() {
     return 0
   fi
 
-  OLLAMA_MODELS="${OLLAMA_MODELS:-/home/arara/.cache/ollama/models}"
+  OLLAMA_MODELS="${OLLAMA_MODELS:-${XDG_CACHE_HOME:-$HOME/.cache}/ollama/models}"
   OLLAMA_FLASH_ATTENTION="${OLLAMA_FLASH_ATTENTION:-1}"
   OLLAMA_KV_CACHE_TYPE="${OLLAMA_KV_CACHE_TYPE:-f16}"
   OLLAMA_NUM_PARALLEL="${OLLAMA_NUM_PARALLEL:-128}"
   OLLAMA_MAX_LOADED_MODELS="${OLLAMA_MAX_LOADED_MODELS:-1}"
 
-  umask 077
   env \
     OLLAMA_MODELS="$OLLAMA_MODELS" \
     OLLAMA_FLASH_ATTENTION="$OLLAMA_FLASH_ATTENTION" \
@@ -107,6 +146,7 @@ ollama_ready_loop() {
 
 cd "$PROJECT_DIR"
 make --no-print-directory >/dev/null
+export HVM_GEMMA_ENDPOINT="$OLLAMA_ENDPOINT"
 
 if ! ollama_ready_loop; then
   if [[ "$STARTED_OLLAMA" == 1 ]] && ! kill -0 "$OLLAMA_PID" 2>/dev/null; then

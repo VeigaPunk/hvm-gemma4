@@ -386,22 +386,44 @@ run_invalid_env_case() {
   local status=$?
   set -e
   if [[ $status != 0 ]]; then
-    printf 'not ok - %s (runtime status %s)\n' "$description" "$status"
+    printf '# %s: runtime status %s\n' "$description" "$status"
     sed 's/^/# /' "$err"
-    FAIL=$((FAIL + 1))
-    return
+    return 1
   fi
 
   if grep -Fq 'HVM_GEMMA_ERROR: invalid generation environment' "$err"; then
-    printf 'ok - %s [invalid env rejected]\n' "$description"
+    return 0
+  else
+    printf '# %s: missing guardrail error\n' "$description"
+    return 1
+  fi
+}
+
+run_invalid_env_group() {
+  local failures=0
+  run_invalid_env_case E04 'invalid env: model contains whitespace' env \
+    HVM_GEMMA_MODEL='bad model' || failures=$((failures + 1))
+  run_invalid_env_case E05 'invalid env: endpoint malformed scheme' env \
+    HVM_GEMMA_ENDPOINT=ftp://ollama.local:11434 || failures=$((failures + 1))
+  run_invalid_env_case E06 'invalid env: keep_alive malformed' env \
+    HVM_GEMMA_KEEP_ALIVE=not-a-duration || failures=$((failures + 1))
+  run_invalid_env_case E07 'invalid env: temperature out of range' env \
+    HVM_GEMMA_TEMPERATURE=2.1 || failures=$((failures + 1))
+  run_invalid_env_case E08 'invalid env: boolean spelling rejected' env \
+    HVM_GEMMA_THINK=yes || failures=$((failures + 1))
+  run_invalid_env_case E09 'invalid env: timeout out of range' env \
+    HVM_GEMMA_HTTP_TIMEOUT=0 || failures=$((failures + 1))
+
+  if (( failures == 0 )); then
+    printf 'ok - invalid generation environments rejected [6 subcases]\n'
     PASS=$((PASS + 1))
   else
-    printf 'not ok - %s (missing guardrail error)\n' "$description"
+    printf 'not ok - invalid generation environments rejected [%d/6 failed]\n' "$failures"
     FAIL=$((FAIL + 1))
   fi
 }
 
-printf '1..26\n'
+printf '1..21\n'
 
 baseline=$TMP/baseline
 mkdir -p "$baseline"
@@ -470,18 +492,7 @@ run_env_case E02 'env override: generation knobs' env \
 run_env_case E03 'env override: base URL parity' env \
   HVM_GEMMA_BASE_URL=http://base.example:9999/
 
-run_invalid_env_case E04 'invalid env: model contains whitespace' env \
-  HVM_GEMMA_MODEL='bad model'
-run_invalid_env_case E05 'invalid env: endpoint malformed scheme' env \
-  HVM_GEMMA_ENDPOINT=ftp://ollama.local:11434
-run_invalid_env_case E06 'invalid env: keep_alive malformed' env \
-  HVM_GEMMA_KEEP_ALIVE=not-a-duration
-run_invalid_env_case E07 'invalid env: temperature out of range' env \
-  HVM_GEMMA_TEMPERATURE=2.1
-run_invalid_env_case E08 'invalid env: boolean spelling rejected' env \
-  HVM_GEMMA_THINK=yes
-run_invalid_env_case E09 'invalid env: timeout out of range' env \
-  HVM_GEMMA_HTTP_TIMEOUT=0
+run_invalid_env_group
 
 printf '# pass=%d fail=%d\n' "$PASS" "$FAIL"
 exit "$((FAIL != 0))"

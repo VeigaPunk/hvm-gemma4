@@ -19,7 +19,7 @@ check:
 	bend check main.bend
 
 run: all check
-	./run.sh "Explain why mixture-of-experts models activate only some experts."
+	./run-hvm2.sh "Explain why mixture-of-experts models activate only some experts."
 
 clean:
 	rm -f build/libhvm_gemma.so

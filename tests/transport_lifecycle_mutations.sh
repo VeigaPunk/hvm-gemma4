@@ -123,7 +123,7 @@ reset_case() {
 run_case() {
   local out=$TMP/out err=$TMP/err
   set +e
-  PATH="$STUBS:/usr/local/bin:/usr/bin:/bin" "$ROOT/run.sh" "$@" >"$out" 2>"$err"
+  PATH="$STUBS:/usr/local/bin:/usr/bin:/bin" "$ROOT/run-hvm2.sh" "$@" >"$out" 2>"$err"
   STATUS=$?
   set -e
 }
@@ -134,7 +134,7 @@ run_case_ms() {
 
   start_ns=$(date +%s%N)
   set +e
-  PATH="$STUBS:/usr/local/bin:/usr/bin:/bin" "$ROOT/run.sh" "$@" >"$out" 2>"$err"
+  PATH="$STUBS:/usr/local/bin:/usr/bin:/bin" "$ROOT/run-hvm2.sh" "$@" >"$out" 2>"$err"
   STATUS=$?
   set -e
   end_ns=$(date +%s%N)
@@ -197,7 +197,7 @@ check 'owned Ollama is stopped before returning after Bend' '[[ $STATUS == 0 ]] 
 (( alive == 1 )) && { kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; }
 
 reset_case; export HVM_PATH=/bin/true CURL_MODE=delayed CURL_READY_AT=999 SLEEP_GATE=$MUT_STATE/sleep.gate
-PATH="$STUBS:/usr/local/bin:/usr/bin:/bin" "$ROOT/run.sh" signal-case >"$TMP/out" 2>"$TMP/err" & runner=$!
+PATH="$STUBS:/usr/local/bin:/usr/bin:/bin" "$ROOT/run-hvm2.sh" signal-case >"$TMP/out" 2>"$TMP/err" & runner=$!
 for _ in $(seq 1 100); do [[ -e "$SLEEP_GATE" ]] && break; /usr/bin/sleep 0.01; done
 for _ in $(seq 1 200); do [[ -f "$MUT_STATE/ollama.pid" ]] && break; /usr/bin/sleep 0.01; done
 kill -TERM "$runner" 2>/dev/null || true
@@ -207,7 +207,7 @@ check 'TERM trap cleans child and exits with signal status' '[[ $STATUS == 143 ]
 reset_case; export HVM_PATH=/bin/true CURL_MODE=never OLLAMA_READY_MAX_ATTEMPTS=10000
 set +e
 /usr/bin/timeout --preserve-status --signal=INT 0.2 \
-  env PATH="$STUBS:/usr/local/bin:/usr/bin:/bin" "$ROOT/run.sh" signal-case >"$TMP/out" 2>"$TMP/err"
+  env PATH="$STUBS:/usr/local/bin:/usr/bin:/bin" "$ROOT/run-hvm2.sh" signal-case >"$TMP/out" 2>"$TMP/err"
 STATUS=$?
 set -e
 check 'INT trap cleans child and exits with signal status' '[[ $STATUS == 130 ]] && grep -q "ollama-term" "$MUT_LOG"'
@@ -274,7 +274,7 @@ check 'PATH hvm fallback is selected when registry pin is absent' '[[ $STATUS ==
 
 reset_case; export HVM_PATH=/bin/true CURL_MODE=hang OLLAMA_READY_TIMEOUT=1 OLLAMA_READY_REQUEST_TIMEOUT=0.05 OLLAMA_READY_MAX_ATTEMPTS=2
 set +e
-PATH="$STUBS:/usr/local/bin:/usr/bin:/bin" "$ROOT/run.sh" hang-case >"$TMP/out" 2>"$TMP/err"
+PATH="$STUBS:/usr/local/bin:/usr/bin:/bin" "$ROOT/run-hvm2.sh" hang-case >"$TMP/out" 2>"$TMP/err"
 STATUS=$?
 set -e
 check 'hung readiness curls are bounded by timeout and fail fast' '[[ $STATUS == 1 ]] && grep -Fq "did not become ready" "$TMP/err" && [[ $(cat "$MUT_STATE/curl.count") -le 3 ]]'

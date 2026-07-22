@@ -1,37 +1,61 @@
-# HVM + Bend + Gemma 4
+# HVM runtimes + Gemma 4
+
+## HVM4 path
+
+The HVM4 adaptation uses Bend codegen + HVM4 as the control-plane gate
+before Ollama inference:
+
+```text
+prompt → Bend control program generation → HVM4 control execution → Ollama/Gemma 4
+```
+
+HVM4 is the default runner:
+
+```sh
+HVM4_GEMMA_METRICS=1 ./run.sh "Reply exactly: HVM4_OK"
+```
+
+`run-hvm4.sh` remains available as the explicit entrypoint. See
+[`hvm4/README.md`](hvm4/README.md) for the runtime boundary. Current HVM4
+has no documented IO/HTTP/dylib/FFI surface, so this path does not claim that
+Gemma tensor operations execute inside HVM4.
+
+## Legacy HVM2/Bend path
 
 Private research stack: **Bend** owns program and IO control flow, **HVM2 2.0.22** executes the compiled net, and a narrow native dylib (`libhvm_gemma.so`) calls a local **Gemma 4** inference service (Ollama / llama.cpp). Quantized tensor work stays outside HVM on purpose.
 
-This is also the transport behind the xbreed **`g-` prefix** (`xask gemma` → `gemma-hvm` → this repo).
+The legacy path remains available through `run-hvm2.sh` and `run-tuned.sh`.
 
 ## Quick start
 
 ```sh
-# optional: pin official QAT Q4_0 GGUF (revision-pinned; public Google repo)
-./download-model.sh
-
-# register with Ollama if needed, then:
+# HVM4 default (model default: gemma4:26b-hvm4)
 ./run.sh "Explain mixture-of-experts routing in one sentence."
+
+# Legacy HVM2/Bend+dylib path
+./run-hvm2.sh "Explain mixture-of-experts routing in one sentence."
 ```
 
-Or install the PATH entrypoint used by xbreed:
+Install the PATH entrypoints used by xbreed:
 
 ```sh
 ln -sf "$(pwd)/run.sh" ~/.local/bin/gemma-hvm
+ln -sf "$(pwd)/run.sh" ~/.local/bin/gemma-hvm4
 xask gemma "one-word reply: pong"
 ```
 
-Select another Ollama model without rebuilding the bridge:
+Select another Ollama model without rebuilding:
 
 ```sh
-HVM_GEMMA_MODEL=gemma4-hvm:official-q4 ./run.sh "Your prompt"
+HVM_GEMMA_MODEL=gemma4:26b-hvm4 ./run.sh "Your prompt"
+HVM_GEMMA_MODEL=gemma4-hvm:official-q4 ./run-hvm2.sh "Your prompt"
 ```
 
 ## Architecture
 
 ```
 prompt
-  → Bend (main.bend)
+  → Bend (main.bend; via run-hvm2.sh)
   → HVM2
   → IO/DyLib → build/libhvm_gemma.so (gemma_generate)
   → HTTP POST http://127.0.0.1:11434/api/generate

@@ -1,42 +1,41 @@
 # xbreed-hvm-proxy (TypeScript / Bun)
 
-OpenAI-compatible HTTP front for the **xbreed `g-` lane**:
+OpenAI-compatible front for the **xbreed `g-` lane**.
+
+**Primary protocol is the Responses API** (`POST /v1/responses`) — what Codex Titanium
+and Pi (`openai-responses`) use. This is **not** Chat Completions as the main path
+(Chat Completions remains as a secondary fallback for Kimi/etc.).
 
 ```
-CLI (Codex / Pi / Kimi / …)
-  → http://127.0.0.1:11435/v1
-  → gemma-hvm  (or XBREED_HVM_VIA=xbreed → xbreed ask gemma)
+CLI (Codex wire_api=responses / Pi openai-responses / …)
+  → http://127.0.0.1:11435/v1/responses
+  → gemma-hvm
   → Bend → HVM2 → libhvm_gemma.so → Ollama
 ```
 
 ## Run
 
 ```sh
-cd /home/arara/hvm-gemma4/proxy
-bun install
-bun run start
-# or: ./run-proxy.sh
+./run-proxy.sh
+# or: bun run src/server.ts
 ```
 
-Health: `curl -s http://127.0.0.1:11435/health`
-
-## Env
-
-| Variable | Default | Meaning |
-|----------|---------|---------|
-| `XBREED_HVM_PORT` | `11435` | listen port |
-| `HVM_GEMMA_BIN` | `gemma-hvm` | HVM entrypoint |
-| `HVM_GEMMA_MODEL` | `gemma4:26b` | Ollama model the bridge requests |
-| `XBREED_HVM_VIA` | `gemma-hvm` | set `xbreed` to use `xbreed ask gemma` |
-| `XBREED_HVM_API_KEY` | `xbreed-hvm` | optional Bearer token |
-| `XASK_TIMEOUT_SECS` | `600` | kill hung HVM after N seconds |
-
-## Smoke
+## Smoke (Responses API)
 
 ```sh
-curl -s http://127.0.0.1:11435/v1/chat/completions \
+curl -s http://127.0.0.1:11435/v1/responses \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer xbreed-hvm' \
-  -d '{"model":"gemma4:26b","messages":[{"role":"user","content":"say pong"}],"stream":false}' \
-  | jq -r .choices[0].message.content
+  -d '{"model":"gemma4:26b","input":"say pong","stream":false}' \
+  | jq -r .output_text
 ```
+
+## CLI wiring
+
+| CLI | Setting |
+|-----|---------|
+| Codex Titanium | `wire_api = "responses"`, provider `xbreed-hvm`, profile `gemma-hvm` |
+| Pi | `api: "openai-responses"`, `xbreed-hvm/gemma4:26b` |
+| Kimi | OpenAI provider → same base URL (uses chat fallback if needed) |
+
+Env: `XBREED_HVM_API_KEY` (default `xbreed-hvm`), `HVM_GEMMA_MODEL`, `XBREED_HVM_PORT`.

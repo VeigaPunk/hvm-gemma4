@@ -245,6 +245,26 @@ run_case() {
   expect_kill "$body_file" "$description"
 }
 
+run_equivalent_case() {
+  local id=$1 description=$2
+  local work=$TMP/$id
+  mkdir -p "$work"
+  cp -- "$SOURCE" "$work/hvm_gemma.c"
+  shift 2
+  "$@" "$work/hvm_gemma.c"
+  build_harness "$work"
+
+  local body_file=$work/body.json
+  BODY_FILE="$body_file" "$work/harness" >/dev/null 2>&1
+  if assert_body_exact "$body_file"; then
+    printf 'ok - %s [equivalent request]\n' "$description"
+    PASS=$((PASS + 1))
+  else
+    printf 'not ok - %s (equivalent mutant changed request)\n' "$description"
+    FAIL=$((FAIL + 1))
+  fi
+}
+
 printf '1..17\n'
 
 baseline=$TMP/baseline
@@ -274,7 +294,7 @@ run_case M08 'precedence: later temperature wins' \
   replace_once \
     '  json_object_object_add(options, "seed", json_object_new_int(42));' \
     $'  json_object_object_add(options, "temperature", json_object_new_double(0.8));\n  json_object_object_add(options, "seed", json_object_new_int(42));'
-run_case M09 'precedence: earlier temperature loses' \
+run_equivalent_case M09 'precedence: earlier temperature loses' \
   replace_once \
     '  json_object_object_add(options, "temperature", json_object_new_double(0.0));' \
     $'  json_object_object_add(options, "temperature", json_object_new_double(0.8));\n  json_object_object_add(options, "temperature", json_object_new_double(0.0));'

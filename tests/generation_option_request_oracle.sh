@@ -19,6 +19,7 @@ FAIL=0
 DEFAULT_MODEL=gemma4-hvm:official-q4
 DEFAULT_ENDPOINT=http://127.0.0.1:11434
 DEFAULT_KEEP_ALIVE=10m
+DEFAULT_SYSTEM='Follow the requested output format exactly. Do not add markdown fences, explanations, or commentary.'
 
 replace_once() {
   local old=$1 new=$2 file=$3
@@ -190,8 +191,10 @@ assert_body_exact() {
   local temperature=${6:-0}
   local seed=${7:-42}
   local think=${8:-false}
+  local system_prompt=${9:-$DEFAULT_SYSTEM}
   jq -e --arg model "$model" \
       --arg keep_alive "$keep_alive" \
+      --arg system_prompt "$system_prompt" \
       --argjson num_ctx "$num_ctx" \
       --argjson num_predict "$num_predict" \
       --argjson temperature "$temperature" \
@@ -199,6 +202,7 @@ assert_body_exact() {
       --argjson think "$think" '
     .model == $model and
     .prompt == "prompt!" and
+    .system == $system_prompt and
     .stream == false and
     .think == $think and
     .keep_alive == $keep_alive and
@@ -208,7 +212,7 @@ assert_body_exact() {
     (((.options.temperature - $temperature) | abs) < 1e-12) and
     .options.seed == $seed and
     .options.num_predict == $num_predict and
-    (keys == ["keep_alive","model","options","prompt","stream","think"])
+    (keys == ["keep_alive","model","options","prompt","stream","system","think"])
   ' "$body_file" >/dev/null
 }
 

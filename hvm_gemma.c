@@ -247,6 +247,10 @@ Port gemma_generate(Net *net, Book *book, Port arg) {
   }
 
   const char *model = NULL;
+  const char *system_prompt = getenv("HVM_GEMMA_SYSTEM");
+  if (system_prompt == NULL || system_prompt[0] == '\0') {
+    system_prompt = "Follow the requested output format exactly. Do not add markdown fences, explanations, or commentary.";
+  }
   char endpoint_buffer[256];
   char keep_alive[128];
   int timeout_seconds;
@@ -257,6 +261,7 @@ Port gemma_generate(Net *net, Book *book, Port arg) {
   double temperature;
 
   if (!env_model("HVM_GEMMA_MODEL", "gemma4-hvm:official-q4", &model) ||
+      strlen(system_prompt) > 4096 ||
       !resolve_endpoint(endpoint_buffer, sizeof(endpoint_buffer)) ||
       !env_keep_alive("HVM_GEMMA_KEEP_ALIVE", "10m", keep_alive, sizeof(keep_alive)) ||
       !env_int("HVM_GEMMA_NUM_CTX", 2048, 128, 1048576, &num_ctx) ||
@@ -274,6 +279,7 @@ Port gemma_generate(Net *net, Book *book, Port arg) {
   struct json_object *options = json_object_new_object();
   json_object_object_add(request, "model", json_object_new_string(model));
   json_object_object_add(request, "prompt", json_object_new_string_len(prompt_text, prompt_length));
+  json_object_object_add(request, "system", json_object_new_string(system_prompt));
   json_object_object_add(request, "stream", json_object_new_boolean(0));
   json_object_object_add(request, "think", json_object_new_boolean(think));
   json_object_object_add(request, "keep_alive", json_object_new_string(keep_alive));

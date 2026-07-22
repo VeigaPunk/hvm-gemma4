@@ -16,11 +16,15 @@ CLI (Codex wire_api=responses / Pi openai-responses / …)
 ## Run
 
 `run-proxy.sh` performs a fail-closed `check-hvm4-provenance.sh` startup check for
-`gemma4-hvm:a4b-q4-k-m` (Q4_K_M) before serving.
+`gemma4-hvm:a4b-q4-k-m` (Q4_K_M) before serving. It enables buffered SSE by
+default for streaming-only clients such as OpenCode; HVM inference itself remains
+non-streaming.
 
 ```sh
 ./run-proxy.sh
-# or: bun run src/server.ts
+XBREED_HVM_STREAMING=0 ./run-proxy.sh  # strict non-streaming mode
+# direct server defaults to streaming disabled unless the flag is set
+XBREED_HVM_STREAMING=1 bun run src/server.ts
 ```
 
 ## Smoke (Responses API)
@@ -41,4 +45,6 @@ curl -s http://127.0.0.1:11435/v1/responses \
 | Pi | `api: "openai-responses"`, provider `xbreed-hvm`, model `gemma4-hvm:a4b-q4-k-m` |
 | Kimi | OpenAI provider → same base URL (uses chat fallback if needed) |
 
-Env: `XBREED_HVM_API_KEY` (default `xbreed-hvm`), `HVM_GEMMA_MODEL`, `XBREED_HVM_PORT`.
+Env: `XBREED_HVM_API_KEY` (default `xbreed-hvm`), `HVM_GEMMA_MODEL`,
+`XBREED_HVM_PORT`, and `XBREED_HVM_STREAMING` (`1|true|yes|on` enables
+buffered SSE; other values disable it).

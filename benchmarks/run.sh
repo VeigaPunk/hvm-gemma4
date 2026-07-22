@@ -72,9 +72,10 @@ HVM_GEMMA_TEMPERATURE=${HVM_GEMMA_TEMPERATURE:-0}
 HVM_GEMMA_SEED=${HVM_GEMMA_SEED:-42}
 HVM_GEMMA_KEEP_ALIVE=${HVM_GEMMA_KEEP_ALIVE:-10m}
 HVM_GEMMA_THINK=${HVM_GEMMA_THINK:-false}
+HVM_GEMMA_SYSTEM=${HVM_GEMMA_SYSTEM:-Follow the requested output format exactly. Do not add markdown fences, explanations, or commentary.}
 HVM_GEMMA_ENDPOINT=${HVM_GEMMA_ENDPOINT:-${OLLAMA_ENDPOINT:-http://127.0.0.1:11434}}
 
-export HVM_GEMMA_MODEL HVM_GEMMA_NUM_CTX HVM_GEMMA_NUM_PREDICT HVM_GEMMA_TEMPERATURE HVM_GEMMA_SEED HVM_GEMMA_KEEP_ALIVE HVM_GEMMA_THINK HVM_GEMMA_ENDPOINT
+export HVM_GEMMA_MODEL HVM_GEMMA_NUM_CTX HVM_GEMMA_NUM_PREDICT HVM_GEMMA_TEMPERATURE HVM_GEMMA_SEED HVM_GEMMA_KEEP_ALIVE HVM_GEMMA_THINK HVM_GEMMA_SYSTEM HVM_GEMMA_ENDPOINT
 
 collect_env_json() {
   local env_json='{}'
@@ -148,7 +149,7 @@ collect_first_response() {
   local started=0 output=''
   while IFS= read -r line || [[ -n "$line" ]]; do
     if ((started == 0)); then
-      if [[ "$line" == *response:* ]]; then
+      if [[ "$line" == response:* ]]; then
         started=1
         output=${line#*response:}
       elif [[ "$line" != * ]]; then
@@ -170,35 +171,24 @@ collect_first_response() {
 }
 
 normalize_output() {
-  local text
+  local text line last
+  local -a lines
   text=$(collect_first_response "$1")
-  text=$(printf '%s
-' "$text" | awk '
-    function trim_edge_lines() {
-      if (out == "") {
-        return
-      }
-      sub(/\n+$/, "", out)
-      sub(/^\n+/, "", out)
-    }
-    {
-      if ($0 ~ /^(HVM_GEMMA_ERROR:|eval_count|prompt_eval_count|eval_duration|load_duration|total_duration|tokens_per_second|tokens_per_sec|speed|latency|prompt_eval|load duration|total duration)/) {
-        next
-      }
-      if (!started && $0 ~ /^[[:space:]]*$/) {
-        next
-      }
-      started=1
-      out = out $0
-      if (NR < 1000000) {
-        out = out "\n"
-      }
-    }
-    END { trim_edge_lines(); printf "%s", out }
-  ')
-  text=${text%$'\r'}
-  text=${text%$'\n'}
-  printf '%s' "$text"
+  mapfile -t lines <<<"$text"
+
+  while ((${#lines[@]} > 0)); do
+    last=$((${#lines[@]} - 1))
+    line=${lines[$last]%$'\r'}
+    if [[ -z "$line" || "$line" =~ ^(Result:|-[[:space:]]ITRS:|-[[:space:]]TIME:|-[[:space:]]MIPS:)[[:space:]] ]]; then
+      unset 'lines[last]'
+    else
+      break
+    fi
+  done
+  while ((${#lines[@]} > 0)) && [[ -z "${lines[0]}" ]]; do
+    lines=("${lines[@]:1}")
+  done
+  ((${#lines[@]} > 0)) && printf '%s' "$(printf '%s\n' "${lines[@]}")" || true
 }
 
 validate_output() {
@@ -256,6 +246,7 @@ build_record() {
     --argjson seed "$HVM_GEMMA_SEED" \
     --arg keep_alive "$HVM_GEMMA_KEEP_ALIVE" \
     --arg think "$HVM_GEMMA_THINK" \
+    --arg system_prompt "$HVM_GEMMA_SYSTEM" \
     --arg dry "$DRY_RUN" \
     --argjson status "$status" \
     --arg wall_time_ms "$wall_time_ms" \
@@ -294,6 +285,7 @@ build_record() {
         model: $model,
         endpoint: $endpoint,
         keep_alive: $keep_alive,
+        system: $system_prompt,
         options: {
           num_ctx: $num_ctx,
           num_predict: $num_predict,
@@ -452,8 +444,6 @@ run_cases_from_group() {
   local expr=$1
   while IFS= read -r line; do
     case_json=$line
-    expected_case_order+=("$(jq -r '.id' <<<"$line")")
-    expected_case_lookup["$(jq -r '.id' <<<"$line")"]=$line
     run_case "$(jq -r '.id' <<<"$line")" \
       "$(jq -r '.split' <<<"$line")" \
       "$(jq -r '.case_type' <<<"$line")" \
@@ -507,6 +497,17 @@ declare -A expected_case_lookup emitted_case_count
 
 mkdir -p -- "$(dirname -- "$OUT")"
 : >"$OUT"
+
+case "$MODE" in
+  calibration) expected_expr='.calibration[]' ;;
+  heldout) expected_expr='.heldout[]' ;;
+  all) expected_expr='.calibration[], .heldout[]' ;;
+esac
+while IFS= read -r expected_case; do
+  expected_id=$(jq -r '.id' <<<"$expected_case")
+  expected_case_order+=("$expected_id")
+  expected_case_lookup["$expected_id"]=$expected_case
+done < <(jq -c "$expected_expr" "$MANIFEST_PATH")
 
 if [[ "$MODE" == "calibration" || "$MODE" == "all" ]]; then
   run_cases_from_group '.calibration[]'

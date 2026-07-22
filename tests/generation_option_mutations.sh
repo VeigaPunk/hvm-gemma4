@@ -59,42 +59,42 @@ delete_once() {
 printf '1..18\n'
 
 compile_mutant M01 'boundary: num_ctx zero' \
-  replace_once 'json_object_new_int(2048)' 'json_object_new_int(0)'
+  replace_once 'env_int("HVM_GEMMA_NUM_CTX", 2048,' 'env_int("HVM_GEMMA_NUM_CTX", 0,'
 compile_mutant M02 'boundary: num_ctx INT_MAX' \
-  replace_once 'json_object_new_int(2048)' 'json_object_new_int(2147483647)'
+  replace_once 'env_int("HVM_GEMMA_NUM_CTX", 2048,' 'env_int("HVM_GEMMA_NUM_CTX", 2147483647,'
 compile_mutant M03 'boundary: num_predict zero' \
-  replace_once 'json_object_new_int(256)' 'json_object_new_int(0)'
+  replace_once 'env_int("HVM_GEMMA_NUM_PREDICT", 256,' 'env_int("HVM_GEMMA_NUM_PREDICT", 0,'
 compile_mutant M04 'boundary: num_predict fill-context sentinel' \
-  replace_once 'json_object_new_int(256)' 'json_object_new_int(-2)'
+  replace_once 'env_int("HVM_GEMMA_NUM_PREDICT", 256,' 'env_int("HVM_GEMMA_NUM_PREDICT", -2,'
 
 compile_mutant M05 'wrong default: stochastic temperature' \
-  replace_once 'json_object_new_double(0.0)' 'json_object_new_double(0.8)'
+  replace_once 'env_double("HVM_GEMMA_TEMPERATURE", 0.0,' 'env_double("HVM_GEMMA_TEMPERATURE", 0.8,'
 compile_mutant M06 'wrong default: seed zero' \
-  replace_once 'json_object_new_int(42)' 'json_object_new_int(0)'
+  replace_once 'env_int("HVM_GEMMA_SEED", 42,' 'env_int("HVM_GEMMA_SEED", 0,'
 compile_mutant M07 'wrong default: doubled context' \
-  replace_once 'json_object_new_int(2048)' 'json_object_new_int(4096)'
+  replace_once 'env_int("HVM_GEMMA_NUM_CTX", 2048,' 'env_int("HVM_GEMMA_NUM_CTX", 4096,'
 
 compile_mutant M08 'precedence: later temperature wins' \
   replace_once \
-    '  json_object_object_add(options, "seed", json_object_new_int(42));' \
-    $'  json_object_object_add(options, "temperature", json_object_new_double(0.8));\n  json_object_object_add(options, "seed", json_object_new_int(42));'
+    '  json_object_object_add(options, "seed", json_object_new_int(seed));' \
+    $'  json_object_object_add(options, "temperature", json_object_new_double(0.8));\n  json_object_object_add(options, "seed", json_object_new_int(seed));'
 compile_mutant M09 'precedence: earlier temperature loses' \
   replace_once \
-    '  json_object_object_add(options, "temperature", json_object_new_double(0.0));' \
-    $'  json_object_object_add(options, "temperature", json_object_new_double(0.8));\n  json_object_object_add(options, "temperature", json_object_new_double(0.0));'
+    '  json_object_object_add(options, "temperature", json_object_new_double(temperature));' \
+    $'  json_object_object_add(options, "temperature", json_object_new_double(0.8));\n  json_object_object_add(options, "temperature", json_object_new_double(temperature));'
 compile_mutant M10 'precedence: request options replaced after attachment' \
   replace_once \
     '  json_object_object_add(request, "options", options);' \
     $'  json_object_object_add(request, "options", options);\n  json_object_object_add(request, "options", json_object_new_object());'
 
 compile_mutant M11 'dropped option: num_ctx' \
-  delete_once $'  json_object_object_add(options, "num_ctx", json_object_new_int(2048));\n'
+  delete_once $'  json_object_object_add(options, "num_ctx", json_object_new_int(num_ctx));\n'
 compile_mutant M12 'dropped option: temperature' \
-  delete_once $'  json_object_object_add(options, "temperature", json_object_new_double(0.0));\n'
+  delete_once $'  json_object_object_add(options, "temperature", json_object_new_double(temperature));\n'
 compile_mutant M13 'dropped option: seed' \
-  delete_once $'  json_object_object_add(options, "seed", json_object_new_int(42));\n'
+  delete_once $'  json_object_object_add(options, "seed", json_object_new_int(seed));\n'
 compile_mutant M14 'dropped option: num_predict' \
-  delete_once $'  json_object_object_add(options, "num_predict", json_object_new_int(256));\n'
+  delete_once $'  json_object_object_add(options, "num_predict", json_object_new_int(num_predict));\n'
 
 compile_mutant M15 'escaping/type: options serialized as a JSON string' \
   replace_once \

@@ -25,6 +25,9 @@ const TIMEOUT_MS =
     1800,
   ) * 1000;
 const BEARER = process.env.XBREED_HVM_API_KEY ?? "";
+const STREAMING_ENABLED = /^(1|true|yes|on)$/i.test(
+  process.env.XBREED_HVM_STREAMING ?? "false",
+);
 const LOOPBACK_HOST = HOST === "127.0.0.1" || HOST === "::1" || HOST === "localhost";
 if (!LOOPBACK_HOST && !BEARER) {
   throw new Error("XBREED_HVM_API_KEY is required when binding outside loopback");
@@ -35,6 +38,7 @@ const MODEL_ALIASES = new Map<string, string>([
   [CANONICAL_MODEL, CANONICAL_MODEL],
   ["gemma4:26b", CANONICAL_MODEL],
   ["gemma4:26b-hvm", CANONICAL_MODEL],
+  ["gemma4:26b-hvm4", "gemma4:26b-hvm4"],
   ["gemma4-hvm:a4b-q4-k-m", CANONICAL_MODEL],
   ["gemma4-hvm:official-q4", CANONICAL_MODEL],
   ["xbreed-gemma", CANONICAL_MODEL],
@@ -309,6 +313,51 @@ function chatResponse(model: string, content: string) {
   };
 }
 
+function eventStream(events: Array<{ type?: string; [key: string]: unknown }>): Response {
+  const body = events
+    .map((event) => {
+      const name = event.type ? `event: ${event.type}\n` : "";
+      return `${name}data: ${JSON.stringify(event)}\n\n`;
+    })
+    .join("") + "data: [DONE]\n\n";
+  return new Response(body, {
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache",
+      "Access-Control-Allow-Origin": "*",
+    },
+  });
+}
+
+/** Buffered SSE adapter: HVM remains non-streaming; compatible clients get stream events after completion. */
+function responsesStreamResponse(model: string, text: string): Response {
+  const completed = responsesResponse(model, text);
+  const item = completed.output[0]!;
+  const part = item.content[0]!;
+  const started = { ...completed, status: "in_progress", output: [], output_text: "" };
+  return eventStream([
+    { type: "response.created", response: started },
+    { type: "response.in_progress", response: started },
+    { type: "response.output_item.added", output_index: 0, item: { ...item, status: "in_progress", content: [] } },
+    { type: "response.content_part.added", item_id: item.id, output_index: 0, content_index: 0, part: { ...part, text: "" } },
+    { type: "response.output_text.delta", item_id: item.id, output_index: 0, content_index: 0, delta: text },
+    { type: "response.output_text.done", item_id: item.id, output_index: 0, content_index: 0, text },
+    { type: "response.content_part.done", item_id: item.id, output_index: 0, content_index: 0, part },
+    { type: "response.output_item.done", output_index: 0, item },
+    { type: "response.completed", response: completed },
+  ]);
+}
+
+function chatStreamResponse(model: string, content: string): Response {
+  const id = `chatcmpl-hvm-${crypto.randomUUID().slice(0, 8)}`;
+  const created = Math.floor(Date.now() / 1000);
+  return eventStream([
+    { id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: { role: "assistant" }, finish_reason: null }] },
+    { id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: { content }, finish_reason: null }] },
+    { id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] },
+  ]);
+}
+
 const server = Bun.serve({
   hostname: HOST,
   port: PORT,
@@ -334,6 +383,7 @@ const server = Bun.serve({
         protocol: "openai-responses (+ chat/completions fallback)",
         transport: USE_XBREED ? "xbreed ask gemma" : GEMMA_BIN,
         default_model: DEFAULT_MODEL,
+        streaming_enabled: STREAMING_ENABLED,
         port: PORT,
         endpoints: ["/v1/responses", "/v1/models", "/v1/chat/completions"],
       });
@@ -365,13 +415,12 @@ const server = Bun.serve({
         return json({ error: { message: "invalid JSON body" } }, 400);
       }
 
-      if (body.stream) {
-        // Non-stream only for HVM; reject loud so clients don't hang.
+      if (body.stream && !STREAMING_ENABLED) {
         return json(
           {
             error: {
               message:
-                "stream=true not supported on xbreed-hvm (HVM is non-streaming). Set stream=false.",
+                "stream=true disabled on xbreed-hvm; set XBREED_HVM_STREAMING=1 to enable buffered SSE.",
               type: "invalid_request_error",
             },
           },
@@ -404,7 +453,10 @@ const server = Bun.serve({
 
       try {
         const text = await runThroughHvm(prompt, model);
-        return json(responsesResponse(model, text || "(empty HVM response)"));
+        const output = text || "(empty HVM response)";
+        return body.stream
+          ? responsesStreamResponse(model, output)
+          : json(responsesResponse(model, output));
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         const status = errorStatusFromCause(e);
@@ -431,11 +483,11 @@ const server = Bun.serve({
       } catch {
         return json({ error: { message: "invalid JSON body" } }, 400);
       }
-      if (body.stream) {
+      if (body.stream && !STREAMING_ENABLED) {
         return json(
           {
             error: {
-              message: "stream not supported; use /v1/responses with stream=false",
+              message: "stream=true disabled; set XBREED_HVM_STREAMING=1 to enable buffered SSE",
               type: "invalid_request_error",
             },
           },
@@ -458,7 +510,10 @@ const server = Bun.serve({
       }
       try {
         const content = await runThroughHvm(prompt, model);
-        return json(chatResponse(model, content || "(empty HVM response)"));
+        const output = content || "(empty HVM response)";
+        return body.stream
+          ? chatStreamResponse(model, output)
+          : json(chatResponse(model, output));
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         const status = errorStatusFromCause(e);

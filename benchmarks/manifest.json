@@ -5,7 +5,7 @@
   "cache_state_source": "ollama_ps",
   "checks": {
     "prompt_count": 24,
-    "prompt_hash": "043a0bdc10d69a9558406788b146453b02aaf8454e1645906117faa681fe8349"
+    "prompt_hash": "f5becee5bd4dd8e2b7d655722951284b7f5134d6e5bfb62b2336bb81cf85daa9"
   },
   "calibration": [
     {
@@ -55,7 +55,7 @@
       "prompt": "Write a one-line Python function named add(a, b) that returns a + b.",
       "validator": {
         "kind": "regex",
-        "pattern": "^def\\s+add\\s*\\(a,\\s*b\\)\\s*:"
+        "pattern": "^def\\s+add\\s*\\(a,\\s*b\\)\\s*:\\s*return\\s+a\\s*\\+\\s*b$"
       }
     },
     {
@@ -75,7 +75,7 @@
       "prompt": "Write a shell command that prints exactly the word done.",
       "validator": {
         "kind": "regex",
-        "pattern": "^done$"
+        "pattern": "^(echo\\s+done|printf\\s+['\"]done\\\\n['\"])$"
       }
     },
     {
@@ -84,12 +84,8 @@
       "case_type": "canonical-json-format",
       "prompt": "Write a one-line Python expression that evaluates to the list [1, 2, 3].",
       "validator": {
-        "kind": "canonical_json",
-        "expected": [
-          1,
-          2,
-          3
-        ]
+        "kind": "regex",
+        "pattern": "^(\\[1,\\s*2,\\s*3\\]|\\[i\\s+for\\s+i\\s+in\\s+range\\(1,\\s*4\\)\\])$"
       }
     },
     {
@@ -99,7 +95,7 @@
       "prompt": "Write a Python function is_even(n) that returns True for even integers and False otherwise.",
       "validator": {
         "kind": "regex",
-        "pattern": "^def\\s+is_even\\s*\\(n\\)\\s*:"
+        "pattern": "^def\\s+is_even\\s*\\(n\\)\\s*:\\s*return\\s+n\\s*%\\s*2\\s*==\\s*0$"
       }
     },
     {
@@ -132,7 +128,7 @@
       "prompt": "Write a one-line SQL expression that yields the integer 7.",
       "validator": {
         "kind": "regex",
-        "pattern": "^SELECT\\s+7;?$"
+        "pattern": "^SELECT\\s+(7|3\\s*\\+\\s*4);?$"
       }
     }
   ],
@@ -184,7 +180,7 @@
       "prompt": "Write a Python function mul(a, b) that returns a * b.",
       "validator": {
         "kind": "regex",
-        "pattern": "^def\\s+mul\\s*\\(a,\\s*b\\)\\s*:"
+        "pattern": "^def\\s+mul\\s*\\(a,\\s*b\\)\\s*:\\s*return\\s+a\\s*\\*\\s*b$"
       }
     },
     {
@@ -194,7 +190,7 @@
       "prompt": "Write a JavaScript function clamp(x, lo, hi) that bounds x between lo and hi.",
       "validator": {
         "kind": "regex",
-        "pattern": "^const\\s+clamp\\s*=\\s*\\(x,\\s*lo,\\s*hi\\)\\s*=>"
+        "pattern": "^(const\\s+clamp\\s*=\\s*\\(x,\\s*lo,\\s*hi\\)\\s*=>\\s*Math\\.min\\(hi,\\s*Math\\.max\\(lo,\\s*x\\)\\);?|function\\s+clamp\\s*\\(x,\\s*lo,\\s*hi\\)\\s*\\{\\s*return\\s+Math\\.min\\(Math\\.max\\(x,\\s*lo\\),\\s*hi\\);?\\s*\\})$"
       }
     },
     {
@@ -204,7 +200,7 @@
       "prompt": "Write a shell command that prints exactly the word ready.",
       "validator": {
         "kind": "regex",
-        "pattern": "^ready$"
+        "pattern": "^(echo\\s+ready|printf\\s+['\"]ready\\\\n['\"])$"
       }
     },
     {
@@ -214,7 +210,7 @@
       "prompt": "Write a Python function first(items) that returns the first element of a non-empty list.",
       "validator": {
         "kind": "regex",
-        "pattern": "^def\\s+first\\s*\\(items\\)\\s*:"
+        "pattern": "^def\\s+first\\s*\\(items\\)\\s*:\\s*return\\s+items\\[0\\]$"
       }
     },
     {
@@ -237,7 +233,7 @@
       "prompt": "Write a Ruby method twice(n) that returns n + n.",
       "validator": {
         "kind": "regex",
-        "pattern": "^def\\s+twice\\s*\\(n\\)"
+        "pattern": "^def\\s+twice\\s*\\(n\\)\\s*;?\\s*n\\s*\\+\\s*n\\s*;?\\s*end$"
       }
     },
     {
@@ -247,7 +243,7 @@
       "prompt": "Write a Go function sum(a int, b int) int that returns a + b.",
       "validator": {
         "kind": "regex",
-        "pattern": "^func\\s+sum\\s*\\(a\\s+int,\\s*b\\s+int\\)\\s+int\\s*\\{"
+        "pattern": "^func\\s+sum\\s*\\(a\\s+int,\\s*b\\s+int\\)\\s+int\\s*\\{\\s*return\\s+a\\s*\\+\\s*b\\s*\\}$"
       }
     },
     {
@@ -257,7 +253,7 @@
       "prompt": "Write a one-line SQL expression that yields the integer 11.",
       "validator": {
         "kind": "regex",
-        "pattern": "^SELECT\\s+11;?$"
+        "pattern": "^SELECT\\s+(11|5\\s*\\+\\s*6);?$"
       }
     }
   ]

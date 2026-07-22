@@ -42,7 +42,7 @@ fi
 # Required fields and split correctness.
 jq -e '.calibration[] | (.id|type=="string" and length>0) and (.prompt|type=="string" and length>0) and (.split=="calibration") and (.case_type|type=="string" and length>0)' "$MANIFEST_PATH" >/dev/null
 jq -e '.heldout[] | (.id|type=="string" and length>0) and (.prompt|type=="string" and length>0) and (.split=="heldout") and (.case_type|type=="string" and length>0)' "$MANIFEST_PATH" >/dev/null
-jq -e '(.calibration + .heldout)[] | (.validator.kind == "exact" and (.validator.expected|type=="string" and length>0)) or (.validator.kind == "executable" and (.validator.language|type=="string" and length>0) and (.validator.script|type=="string" and length>0))' "$MANIFEST_PATH" >/dev/null
+jq -e '(.calibration + .heldout)[] | (.validator.kind == "exact" and (.validator.expected|type=="string" and length>0)) or (.validator.kind == "regex" and (.validator.pattern|type=="string" and length>0)) or (.validator.kind == "canonical_json" and (.validator.expected != null))' "$MANIFEST_PATH" >/dev/null
 
 id_count=$(jq '[.calibration[].id, .heldout[].id] | length' "$MANIFEST_PATH")
 uniq_count=$(jq '[.calibration[].id, .heldout[].id] | unique | length' "$MANIFEST_PATH")

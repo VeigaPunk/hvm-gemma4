@@ -172,14 +172,14 @@ check_mutant M01 'semantic inversion' 'valid manifest is rejected' \
   '[[ $STATUS == 2 ]] && grep -q "MANIFEST_COUNT_MISMATCH" "$TMP/M01/stderr"'
 
 prepare_mutant M02 'suite result predicate inverted' replace_once \
-  'if [[ "$failed_count" -gt 0 ]]; then' \
-  'if [[ "$failed_count" -eq 0 ]]; then'
+  'if [[ "$failed_count" -gt 0 || "$no_drop_pass" != true ]]; then' \
+  'if false; then'
 check_mutant M02 'semantic inversion' 'failed suite returns success' \
-  '[[ $STATUS == 0 ]] && grep -q "FAILED=1" "$TMP/M02/stdout"'
+  '[[ $STATUS == 0 ]] && grep -q "FAILED=4" "$TMP/M02/stdout"'
 
 prepare_mutant M03 'failure counter dropped' replace_once \
-  '    ((failed_count+=1))' \
-  '    :'
+  $'  if [[ "$status" -ne 0 || "$validator_passed" != true ]]; then\n    failed_count=$((failed_count + 1))\n  fi' \
+  $'  if false; then\n    failed_count=$((failed_count + 1))\n  fi'
 check_mutant M03 'dropped failures' 'nonzero case is not counted' \
   '[[ $STATUS == 0 ]] && grep -q "FAILED=0" "$TMP/M03/stdout" && jq -e "select(.prompt_id == \"cal-2\") | .result.status == 7" "$TMP/M03/output.jsonl" >/dev/null'
 
@@ -187,10 +187,10 @@ prepare_mutant M04 'runner status discarded' replace_once \
   '    status=$?' \
   '    status=0'
 check_mutant M04 'dropped failures' 'runner exit status becomes zero' \
-  '[[ $STATUS == 0 ]] && jq -e "select(.prompt_id == \"cal-2\") | .result.status == 0 and .validators.exit_ok" "$TMP/M04/output.jsonl" >/dev/null'
+  '[[ $STATUS == 1 ]] && jq -e "select(.prompt_id == \"cal-2\") | .result.status == 0 and .validators.exit_ok" "$TMP/M04/output.jsonl" >/dev/null'
 
 prepare_mutant M05 'configured runner bypassed' replace_once \
-  '    "$RUNNER" "$prompt" >"$stdout_file" 2>"$stderr_file"' \
+  '      "$RUNNER_RESOLVED" "$prompt" >"$stdout_file" 2>"$stderr_file"' \
   '    : "$prompt" >"$stdout_file" 2>"$stderr_file"'
 check_mutant M05 'route bypass' 'cases skip the configured runner' \
   '[[ $STATUS == 0 ]] && [[ ! -s "$TMP/M05/state/runner.log" ]] && jq -e ".validators.runner_invoked and .result.stdout == \"\"" "$TMP/M05/output.jsonl" >/dev/null'
@@ -202,22 +202,22 @@ check_mutant M06 'route bypass' 'calibration route executes heldout twice' \
   '[[ $STATUS == 0 ]] && [[ $(jq -r .prompt_id "$TMP/M06/output.jsonl" | paste -sd, -) == "hold-1,hold-2,hold-1,hold-2" ]]'
 
 prepare_mutant M07 'cache labels swapped' replace_once \
-  $'          before: ($cache_before | fromjson),\n          after: ($cache_after | fromjson)' \
-  $'          before: ($cache_after | fromjson),\n          after: ($cache_before | fromjson)'
+  $'          before: ($cache_before | try fromjson catch {}),\n          after: ($cache_after | try fromjson catch {})' \
+  $'          before: ($cache_after | try fromjson catch {}),\n          after: ($cache_before | try fromjson catch {})'
 check_mutant M07 'cache mislabel' 'before and after cache samples are reversed' \
   '[[ $(jq -sr "first | .diagnostics.cache_state.before.models[0].name" "$TMP/M07/output.jsonl") == cache-2 ]] && [[ $(jq -sr "first | .diagnostics.cache_state.after.models[0].name" "$TMP/M07/output.jsonl") == cache-1 ]]'
 
 prepare_mutant M08 'cache before overwritten' replace_once \
-  '          before: ($cache_before | fromjson),' \
-  '          before: ($cache_after | fromjson),'
+  '          before: ($cache_before | try fromjson catch {}),' \
+  '          before: ($cache_after | try fromjson catch {}),'
 check_mutant M08 'cache mislabel' 'both cache labels report the after sample' \
-  '[[ $(jq -sr "first | [.diagnostics.cache_state.before.models[0].name, .diagnostics.cache_state.after.models[0].name] | join(\",\")" "$TMP/M08/output.jsonl") == cache-2,cache-2 ]]'
+  '[[ $(jq -sr "first | [.diagnostics.cache_state.before.models[0].name, .diagnostics.cache_state.after.models[0].name] | join(\",\")" "$TMP/M08/output.jsonl") == "cache-2,cache-2" ]]'
 
 prepare_mutant M09 'digest value omitted' replace_once \
-  '        model_digest: $digest,' \
-  '        model_digest: "",'
-check_mutant M09 'digest omission' 'record carries an empty digest' \
-  '[[ $(jq -sr "first | .diagnostics.model_digest" "$TMP/M09/output.jsonl") == "" ]]'
+  '        model_digest: {\n          before: ($digest_before | try fromjson catch {}),\n          after: ($digest_after | try fromjson catch {})\n        },' \
+  '        model_digest: {},'
+check_mutant M09 'digest omission' 'record carries an empty digest object' \
+  'jq -e "first | .diagnostics.model_digest == {}" "$TMP/M09/output.jsonl" >/dev/null'
 
 prepare_mutant M10 'calibration order reversed' replace_once \
   "  run_cases_from_group '.calibration[]'" \
@@ -226,8 +226,8 @@ check_mutant M10 'order leak' 'manifest order is not preserved' \
   '[[ $(jq -r .prompt_id "$TMP/M10/output.jsonl" | paste -sd, -) == "cal-2,cal-1,hold-1,hold-2" ]]'
 
 prepare_mutant M11 'stdout truncated before record' replace_once \
-  '  build_record "$prompt_id" "$split" "$case_type" "$prompt" "$status" "$wall_ms" "$stdout_file" "$stderr_file" "$digest_after" "$cache_before" "$cache_after"' \
-  $'  : >"$stdout_file"\n  build_record "$prompt_id" "$split" "$case_type" "$prompt" "$status" "$wall_ms" "$stdout_file" "$stderr_file" "$digest_after" "$cache_before" "$cache_after"'
+  '  build_record "$prompt_id" "$split" "$case_type" "$prompt" "$status" "$wall_ms" "$stdout_file" "$stderr_file" "$digest_before" "$digest_after" "$cache_before" "$cache_after"' \
+  $'  : >"$stdout_file"\n  build_record "$prompt_id" "$split" "$case_type" "$prompt" "$status" "$wall_ms" "$stdout_file" "$stderr_file" "$digest_before" "$digest_after" "$cache_before" "$cache_after"'
 check_mutant M11 'truncation pass' 'successful case accepts empty captured output' \
   'jq -e "select(.prompt_id == \"cal-1\") | .validators.exit_ok and .result.stdout == \"\" and .result.stdout_bytes == 0" "$TMP/M11/output.jsonl" >/dev/null'
 
@@ -238,10 +238,10 @@ check_mutant M12 'truncation pass' 'nonempty output is labeled zero bytes' \
   'jq -e "select(.prompt_id == \"cal-1\") | (.result.stdout | length) > 0 and .result.stdout_bytes == 0 and .validators.exit_ok" "$TMP/M12/output.jsonl" >/dev/null'
 
 prepare_mutant M13 'only missing post-run digest retried' replace_once \
-  '    digest_after=$digest_before' \
-  '    digest_after=$(collect_model_digest "$HVM_GEMMA_ENDPOINT")'
-check_mutant M13 'retry asymmetry' 'post-run digest gets an unpaired retry' \
-  '[[ $(<"$TMP/M13/state/show.count") -ge 3 ]] && [[ $(jq -sr "first | .diagnostics.model_digest" "$TMP/M13/output.jsonl") == digest-retry ]]' retry
+  '  digest_before=$(collect_model_digest "$HVM_GEMMA_ENDPOINT")' \
+  '  digest_before="{\"status\":\"error\",\"value\":\"\"}"'
+check_mutant M13 'retry asymmetry' 'post-run digest fetch is still attempted' \
+  '[[ $(<"$TMP/M13/state/show.count") -ge 2 ]] && [[ $(jq -sr "first | .diagnostics.model_digest.after.status" "$TMP/M13/output.jsonl") != "" ]]' retry
 
 prepare_mutant M14 'calibration sample reduced' replace_once \
   "  run_cases_from_group '.calibration[]'" \
@@ -256,7 +256,7 @@ check_mutant M15 'sample reduction' 'only first heldout case executes' \
   '[[ $STATUS == 1 ]] && [[ $(wc -l <"$TMP/M15/output.jsonl") == 3 ]] && [[ $(jq -r .prompt_id "$TMP/M15/output.jsonl" | paste -sd, -) == "cal-1,cal-2,hold-1" ]]'
 
 prepare_mutant M16 'cache resource omitted' replace_once \
-  $'        cache_state: {\n          before: ($cache_before | fromjson),\n          after: ($cache_after | fromjson)\n        }' \
+  $'        cache_state: {\n          before: ($cache_before | try fromjson catch {}),\n          after: ($cache_after | try fromjson catch {})\n        }' \
   '        cache_state: {}'
 check_mutant M16 'resource omission' 'cache diagnostics are empty' \
   'jq -se "first | .diagnostics.cache_state == {}" "$TMP/M16/output.jsonl" >/dev/null'

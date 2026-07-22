@@ -52,7 +52,16 @@ Replacing the tensor engine would mean a full Gemma 4 loader, tokenizer, quantiz
 
 | Variable | Role |
 |----------|------|
-| `HVM_GEMMA_MODEL` | Ollama model name (default `gemma4:26b`) |
+| `HVM_GEMMA_MODEL` | Ollama model name (default `gemma4-hvm:official-q4`) |
+| `HVM_GEMMA_NUM_CTX` | Context window (default `2048`, minimum `128`) |
+| `HVM_GEMMA_NUM_PREDICT` | Output-token cap (default `256`, minimum `1`) |
+| `HVM_GEMMA_TEMPERATURE` | Sampling temperature (default `0`, range `0..2`) |
+| `HVM_GEMMA_SEED` | Sampling seed (default `42`) |
+| `HVM_GEMMA_THINK` | Thinking mode: `true`/`false` or `1`/`0` (default `false`) |
+| `HVM_GEMMA_KEEP_ALIVE` | Ollama model residency (default `10m`) |
+| `OLLAMA_ENDPOINT` | Ollama base URL (default `http://127.0.0.1:11434`) |
+| `HVM_GEMMA_ENDPOINT` | Bridge-specific Ollama URL override; takes precedence over `OLLAMA_ENDPOINT` |
+| `OLLAMA_NUM_PARALLEL` | Server parallel request slots when this script starts Ollama (default `128`) |
 | `HVM_PATH` | HVM binary for `bend --hvm-bin` |
 | `HVM_ROOT` | HVM crate source for `make` includes |
 | `HVM_GEMMA_BIN` | xbreed override for this entrypoint |

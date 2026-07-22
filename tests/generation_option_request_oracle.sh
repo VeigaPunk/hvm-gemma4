@@ -16,6 +16,10 @@ trap 'rm -rf -- "$TMP"' EXIT INT TERM HUP
 PASS=0
 FAIL=0
 
+DEFAULT_MODEL=gemma4-hvm:official-q4
+DEFAULT_ENDPOINT=http://127.0.0.1:11434
+DEFAULT_KEEP_ALIVE=10m
+
 replace_once() {
   local old=$1 new=$2 file=$3
   OLD=$old NEW=$new perl -0pi -e '
@@ -57,6 +61,15 @@ typedef struct {
   const char *url;
   const char *postfields;
 } CurlCtx;
+
+static void write_text_file(const char *path, const char *text) {
+  if (path == NULL || text == NULL) return;
+  FILE *fh = fopen(path, "wb");
+  if (fh == NULL) return;
+  fputs(text, fh);
+  fputc('\n', fh);
+  fclose(fh);
+}
 
 static char *dup_cstr(const char *text) {
   size_t len = strlen(text);
@@ -119,6 +132,7 @@ CURLcode curl_easy_perform(void *curl) {
     fputs(ctx->postfields, fh);
     fclose(fh);
   }
+  write_text_file(getenv("URL_FILE"), ctx->url);
   if (ctx->write_fn != NULL) {
     const char *payload = "{\"response\":\"pong\"}";
     ctx->write_fn((void *)payload, 1, strlen(payload), ctx->write_data);
@@ -152,7 +166,7 @@ Str readback_str(Net *net, Book *book, Port port) {
 
 Port inject_bytes(Net *net, Bytes *bytes) {
   (void)net;
-  (void)bytes;
+  fwrite(bytes->buf, 1, bytes->len, stderr);
   return 0;
 }
 
@@ -169,20 +183,40 @@ EOF
 
 assert_body_exact() {
   local body_file=$1
-  jq -e '
-    .model == "gemma4:26b" and
+  local model=${2:-$DEFAULT_MODEL}
+  local keep_alive=${3:-$DEFAULT_KEEP_ALIVE}
+  local num_ctx=${4:-2048}
+  local num_predict=${5:-256}
+  local temperature=${6:-0}
+  local seed=${7:-42}
+  local think=${8:-false}
+  jq -e --arg model "$model" \
+      --arg keep_alive "$keep_alive" \
+      --argjson num_ctx "$num_ctx" \
+      --argjson num_predict "$num_predict" \
+      --argjson temperature "$temperature" \
+      --argjson seed "$seed" \
+      --argjson think "$think" '
+    .model == $model and
     .prompt == "prompt!" and
     .stream == false and
-    .think == false and
-    .keep_alive == "10m" and
+    .think == $think and
+    .keep_alive == $keep_alive and
     (.options | type == "object") and
     (.options | keys == ["num_ctx","num_predict","seed","temperature"]) and
-    .options.num_ctx == 2048 and
-    .options.temperature == 0 and
-    .options.seed == 42 and
-    .options.num_predict == 256 and
+    .options.num_ctx == $num_ctx and
+    (((.options.temperature - $temperature) | abs) < 1e-12) and
+    .options.seed == $seed and
+    .options.num_predict == $num_predict and
     (keys == ["keep_alive","model","options","prompt","stream","think"])
   ' "$body_file" >/dev/null
+}
+
+assert_url_exact() {
+  local url_file=$1
+  local endpoint=${2:-$DEFAULT_ENDPOINT}
+  local expected="${endpoint}/api/generate"
+  grep -Fxq "$expected" "$url_file"
 }
 
 record_body() {
@@ -227,11 +261,13 @@ run_case() {
   build_harness "$work"
 
   local body_file=$work/body.json
+  local url_file=$work/url.txt
   : >"$body_file"
+  : >"$url_file"
 
   local out=$work/out err=$work/err
   set +e
-  BODY_FILE="$body_file" "$work/harness" >"$out" 2>"$err"
+  BODY_FILE="$body_file" URL_FILE="$url_file" "$work/harness" >"$out" 2>"$err"
   local status=$?
   set -e
 
@@ -242,6 +278,12 @@ run_case() {
     return
   fi
 
+  if ! assert_url_exact "$url_file"; then
+    printf 'not ok - %s (url mismatch)\n' "$description"
+    sed 's/^/# url: /' "$url_file"
+    FAIL=$((FAIL + 1))
+    return 1
+  fi
   expect_kill "$body_file" "$description"
 }
 
@@ -255,7 +297,13 @@ run_equivalent_case() {
   build_harness "$work"
 
   local body_file=$work/body.json
-  BODY_FILE="$body_file" "$work/harness" >/dev/null 2>&1
+  local url_file=$work/url.txt
+  BODY_FILE="$body_file" URL_FILE="$url_file" "$work/harness" >/dev/null 2>&1
+  if ! assert_url_exact "$url_file"; then
+    printf 'not ok - %s (url mismatch)\n' "$description"
+    FAIL=$((FAIL + 1))
+    return
+  fi
   if assert_body_exact "$body_file"; then
     printf 'ok - %s [equivalent request]\n' "$description"
     PASS=$((PASS + 1))
@@ -265,52 +313,141 @@ run_equivalent_case() {
   fi
 }
 
-printf '1..17\n'
+run_env_case() {
+  local id=$1 description=$2
+  local work=$TMP/$id
+  mkdir -p "$work"
+  cp -- "$SOURCE" "$work/hvm_gemma.c"
+  build_harness "$work"
+
+  local body_file=$work/body.json
+  local url_file=$work/url.txt
+  : >"$body_file"
+  : >"$url_file"
+  local out=$work/out err=$work/err
+  shift 2
+  local model=$DEFAULT_MODEL endpoint=$DEFAULT_ENDPOINT keep_alive=$DEFAULT_KEEP_ALIVE
+  local num_ctx=2048 num_predict=256 temperature=0 seed=42 think=false
+  set +e
+  BODY_FILE="$body_file" URL_FILE="$url_file" "$@" "$work/harness" >"$out" 2>"$err"
+  local status=$?
+  set -e
+  if [[ $status != 0 ]]; then
+    printf 'not ok - %s (runtime status %s)\n' "$description" "$status"
+    sed 's/^/# /' "$err"
+    FAIL=$((FAIL + 1))
+    return
+  fi
+
+  case "$id" in
+    E01)
+      model=custom-model
+      endpoint=http://ollama.local:9999
+      ;;
+    E02)
+      num_ctx=4096
+      num_predict=512
+      temperature=0.8
+      seed=7
+      think=true
+      keep_alive=30m
+      ;;
+    E03)
+      endpoint=http://base.example:9999
+      ;;
+  esac
+
+  if ! assert_body_exact "$body_file" "$model" "$keep_alive" "$num_ctx" "$num_predict" "$temperature" "$seed" "$think"; then
+    printf 'not ok - %s (env override body mismatch)\n' "$description"
+    sed 's/^/# body: /' "$body_file"
+    FAIL=$((FAIL + 1))
+    return
+  fi
+  if ! assert_url_exact "$url_file" "$endpoint"; then
+    printf 'not ok - %s (env override url mismatch)\n' "$description"
+    sed 's/^/# url: /' "$url_file"
+    FAIL=$((FAIL + 1))
+    return
+  fi
+  printf 'ok - %s [env override]\n' "$description"
+  PASS=$((PASS + 1))
+}
+
+run_invalid_env_case() {
+  local id=$1 description=$2
+  local work=$TMP/$id
+  mkdir -p "$work"
+  cp -- "$SOURCE" "$work/hvm_gemma.c"
+  build_harness "$work"
+  local out=$work/out err=$work/err
+  shift 2
+  set +e
+  "$@" "$work/harness" >"$out" 2>"$err"
+  local status=$?
+  set -e
+  if [[ $status != 0 ]]; then
+    printf 'not ok - %s (runtime status %s)\n' "$description" "$status"
+    sed 's/^/# /' "$err"
+    FAIL=$((FAIL + 1))
+    return
+  fi
+
+  if grep -Fq 'HVM_GEMMA_ERROR: invalid generation environment' "$err"; then
+    printf 'ok - %s [invalid env rejected]\n' "$description"
+    PASS=$((PASS + 1))
+  else
+    printf 'not ok - %s (missing guardrail error)\n' "$description"
+    FAIL=$((FAIL + 1))
+  fi
+}
+
+printf '1..26\n'
 
 baseline=$TMP/baseline
 mkdir -p "$baseline"
 cp -- "$SOURCE" "$baseline/hvm_gemma.c"
 build_harness "$baseline"
-BODY_FILE="$baseline/body.json" "$baseline/harness" >/dev/null 2>&1
+BODY_FILE="$baseline/body.json" URL_FILE="$baseline/url.txt" "$baseline/harness" >/dev/null 2>&1
 record_body "$baseline/body.json" 'baseline exact-body control'
+assert_url_exact "$baseline/url.txt"
 
 run_case M01 'boundary: num_ctx zero' \
-  replace_once 'json_object_new_int(2048)' 'json_object_new_int(0)'
+  replace_once 'env_int("HVM_GEMMA_NUM_CTX", 2048,' 'env_int("HVM_GEMMA_NUM_CTX", 0,'
 run_case M02 'boundary: num_ctx INT_MAX' \
-  replace_once 'json_object_new_int(2048)' 'json_object_new_int(2147483647)'
+  replace_once 'env_int("HVM_GEMMA_NUM_CTX", 2048,' 'env_int("HVM_GEMMA_NUM_CTX", 2147483647,'
 run_case M03 'boundary: num_predict zero' \
-  replace_once 'json_object_new_int(256)' 'json_object_new_int(0)'
+  replace_once 'env_int("HVM_GEMMA_NUM_PREDICT", 256,' 'env_int("HVM_GEMMA_NUM_PREDICT", 0,'
 run_case M04 'boundary: num_predict fill-context sentinel' \
-  replace_once 'json_object_new_int(256)' 'json_object_new_int(-2)'
+  replace_once 'env_int("HVM_GEMMA_NUM_PREDICT", 256,' 'env_int("HVM_GEMMA_NUM_PREDICT", -2,'
 
 run_case M05 'wrong default: stochastic temperature' \
-  replace_once 'json_object_new_double(0.0)' 'json_object_new_double(0.8)'
+  replace_once 'env_double("HVM_GEMMA_TEMPERATURE", 0.0,' 'env_double("HVM_GEMMA_TEMPERATURE", 0.8,'
 run_case M06 'wrong default: seed zero' \
-  replace_once 'json_object_new_int(42)' 'json_object_new_int(0)'
+  replace_once 'env_int("HVM_GEMMA_SEED", 42,' 'env_int("HVM_GEMMA_SEED", 0,'
 run_case M07 'wrong default: doubled context' \
-  replace_once 'json_object_new_int(2048)' 'json_object_new_int(4096)'
+  replace_once 'env_int("HVM_GEMMA_NUM_CTX", 2048,' 'env_int("HVM_GEMMA_NUM_CTX", 4096,'
 
 run_case M08 'precedence: later temperature wins' \
   replace_once \
-    '  json_object_object_add(options, "seed", json_object_new_int(42));' \
-    $'  json_object_object_add(options, "temperature", json_object_new_double(0.8));\n  json_object_object_add(options, "seed", json_object_new_int(42));'
+    '  json_object_object_add(options, "seed", json_object_new_int(seed));' \
+    $'  json_object_object_add(options, "temperature", json_object_new_double(0.8));\n  json_object_object_add(options, "seed", json_object_new_int(seed));'
 run_equivalent_case M09 'precedence: earlier temperature loses' \
   replace_once \
-    '  json_object_object_add(options, "temperature", json_object_new_double(0.0));' \
-    $'  json_object_object_add(options, "temperature", json_object_new_double(0.8));\n  json_object_object_add(options, "temperature", json_object_new_double(0.0));'
+    '  json_object_object_add(options, "temperature", json_object_new_double(temperature));' \
+    $'  json_object_object_add(options, "temperature", json_object_new_double(0.8));\n  json_object_object_add(options, "temperature", json_object_new_double(temperature));'
 run_case M10 'precedence: request options replaced after attachment' \
   replace_once \
     '  json_object_object_add(request, "options", options);' \
     $'  json_object_object_add(request, "options", options);\n  json_object_object_add(request, "options", json_object_new_object());'
 
 run_case M11 'dropped option: num_ctx' \
-  delete_once $'  json_object_object_add(options, "num_ctx", json_object_new_int(2048));\n'
+  delete_once $'  json_object_object_add(options, "num_ctx", json_object_new_int(num_ctx));\n'
 run_case M12 'dropped option: temperature' \
-  delete_once $'  json_object_object_add(options, "temperature", json_object_new_double(0.0));\n'
+  delete_once $'  json_object_object_add(options, "temperature", json_object_new_double(temperature));\n'
 run_case M13 'dropped option: seed' \
-  delete_once $'  json_object_object_add(options, "seed", json_object_new_int(42));\n'
+  delete_once $'  json_object_object_add(options, "seed", json_object_new_int(seed));\n'
 run_case M14 'dropped option: num_predict' \
-  delete_once $'  json_object_object_add(options, "num_predict", json_object_new_int(256));\n'
+  delete_once $'  json_object_object_add(options, "num_predict", json_object_new_int(num_predict));\n'
 
 run_case M15 'escaping/type: options serialized as a JSON string' \
   replace_once \
@@ -318,6 +455,33 @@ run_case M15 'escaping/type: options serialized as a JSON string' \
     'json_object_object_add(request, "options", json_object_new_string(json_object_to_json_string(options)));'
 run_case M16 'escaping/key: quote-backslash key mismatch' \
   replace_once '"temperature", json_object_new_double' '"temperature\"", json_object_new_double'
+
+
+run_env_case E01 'env override: model and endpoint' env \
+  HVM_GEMMA_MODEL=custom-model \
+  HVM_GEMMA_ENDPOINT=http://ollama.local:9999
+run_env_case E02 'env override: generation knobs' env \
+  HVM_GEMMA_NUM_CTX=4096 \
+  HVM_GEMMA_NUM_PREDICT=512 \
+  HVM_GEMMA_TEMPERATURE=0.8 \
+  HVM_GEMMA_SEED=7 \
+  HVM_GEMMA_THINK=true \
+  HVM_GEMMA_KEEP_ALIVE=30m
+run_env_case E03 'env override: base URL parity' env \
+  HVM_GEMMA_BASE_URL=http://base.example:9999/
+
+run_invalid_env_case E04 'invalid env: model contains whitespace' env \
+  HVM_GEMMA_MODEL='bad model'
+run_invalid_env_case E05 'invalid env: endpoint malformed scheme' env \
+  HVM_GEMMA_ENDPOINT=ftp://ollama.local:11434
+run_invalid_env_case E06 'invalid env: keep_alive malformed' env \
+  HVM_GEMMA_KEEP_ALIVE=not-a-duration
+run_invalid_env_case E07 'invalid env: temperature out of range' env \
+  HVM_GEMMA_TEMPERATURE=2.1
+run_invalid_env_case E08 'invalid env: boolean spelling rejected' env \
+  HVM_GEMMA_THINK=yes
+run_invalid_env_case E09 'invalid env: timeout out of range' env \
+  HVM_GEMMA_HTTP_TIMEOUT=0
 
 printf '# pass=%d fail=%d\n' "$PASS" "$FAIL"
 exit "$((FAIL != 0))"

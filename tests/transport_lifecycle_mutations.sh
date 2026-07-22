@@ -25,6 +25,8 @@ if [[ "$NAME" != transport_lifecycle_mutations.sh ]]; then
       ;;
     ollama)
       printf 'ollama %s\n' "$$" >>"$MUT_LOG"
+      printf 'env OLLAMA_MODELS=%s OLLAMA_FLASH_ATTENTION=%s OLLAMA_KV_CACHE_TYPE=%s OLLAMA_NUM_PARALLEL=%s OLLAMA_MAX_LOADED_MODELS=%s\n' \
+        "${OLLAMA_MODELS:-}" "${OLLAMA_FLASH_ATTENTION:-}" "${OLLAMA_KV_CACHE_TYPE:-}" "${OLLAMA_NUM_PARALLEL:-}" "${OLLAMA_MAX_LOADED_MODELS:-}" >>"$MUT_LOG"
       printf '%s\n' "$$" >"$MUT_STATE/ollama.pid"
       [[ "${OLLAMA_MODE:-live}" == dead ]] && exit 23
       trap 'printf "ollama-term\n" >>"$MUT_LOG"; exit 0' TERM INT
@@ -34,6 +36,14 @@ if [[ "$NAME" != transport_lifecycle_mutations.sh ]]; then
       printf 'bend' >>"$MUT_LOG"
       printf ' <%s>' "$@" >>"$MUT_LOG"
       printf '\n' >>"$MUT_LOG"
+      printf 'prompt <%s>\n' "${HVM_GEMMA_PROMPT-__UNSET__}" >>"$MUT_LOG"
+      if [[ -n "${HVM_GEMMA_PROMPT_FILE:-}" ]]; then
+        printf 'prompt_file <%s>\n' "$HVM_GEMMA_PROMPT_FILE" >>"$MUT_LOG"
+        if [[ -f "$HVM_GEMMA_PROMPT_FILE" ]]; then
+          printf 'prompt_bytes <%s>\n' "$(wc -c <"$HVM_GEMMA_PROMPT_FILE")" >>"$MUT_LOG"
+          printf 'prompt_sha256 <%s>\n' "$(sha256sum "$HVM_GEMMA_PROMPT_FILE" | awk '{print $1}')" >>"$MUT_LOG"
+        fi
+      fi
       if [[ "${BEND_VALIDATE_HVM:-0}" == 1 && ! -x "${2:-}" ]]; then
         printf 'bend: invalid HVM binary: %s\n' "${2:-}" >&2
         exit 66
@@ -72,6 +82,8 @@ reset_case() {
   : >"$MUT_LOG"
   rm -f "$MUT_STATE"/*
   unset MAKE_EXIT CURL_MODE CURL_READY_AT OLLAMA_MODE BEND_VALIDATE_HVM BEND_STDOUT BEND_STDERR BEND_EXIT JQ_EXIT SLEEP_GATE
+  unset OLLAMA_READY_TIMEOUT OLLAMA_READY_MAX_ATTEMPTS OLLAMA_READY_INTERVAL OLLAMA_READY_REQUEST_TIMEOUT OLLAMA_CONNECT_TIMEOUT OLLAMA_MAX_TIME
+  unset OLLAMA_MODELS OLLAMA_FLASH_ATTENTION OLLAMA_KV_CACHE_TYPE OLLAMA_NUM_PARALLEL OLLAMA_MAX_LOADED_MODELS
 }
 
 run_case() {
@@ -87,7 +99,7 @@ not_ok() { printf 'not ok %02d - %s\n' "$((PASS + FAIL + 1))" "$1"; FAIL=$((FAIL
 check() { if eval "$2"; then ok "$1"; else not_ok "$1"; fi; }
 
 set -e
-printf '1..16\n'
+printf '1..18\n'
 
 reset_case; export HVM_PATH=$TMP/not-executable CURL_MODE=ready
 run_case pin-bypass
@@ -101,29 +113,32 @@ reset_case; export HVM_PATH=/bin/true CURL_MODE=ready
 run_case already-ready
 check 'ready service bypasses Ollama startup' '! grep -q "^ollama " "$MUT_LOG" && grep -q "^bend" "$MUT_LOG"'
 
+reset_case; export HVM_PATH=/bin/true CURL_MODE=delayed CURL_READY_AT=2 OLLAMA_MODELS=/custom/models OLLAMA_FLASH_ATTENTION=0 OLLAMA_KV_CACHE_TYPE=q8_0 OLLAMA_NUM_PARALLEL=7 OLLAMA_MAX_LOADED_MODELS=3
+run_case env-overrides
+check 'server env overrides reach owned Ollama startup' 'grep -Fq "OLLAMA_MODELS=/custom/models" "$MUT_LOG" && grep -Fq "OLLAMA_FLASH_ATTENTION=0" "$MUT_LOG" && grep -Fq "OLLAMA_KV_CACHE_TYPE=q8_0" "$MUT_LOG" && grep -Fq "OLLAMA_NUM_PARALLEL=7" "$MUT_LOG" && grep -Fq "OLLAMA_MAX_LOADED_MODELS=3" "$MUT_LOG"'
+
 reset_case; export HVM_PATH=/bin/true CURL_MODE=false-positive
 run_case false-positive
-check 'any successful root response is accepted as ready' '[[ $STATUS == 0 ]] && [[ $(cat "$MUT_STATE/curl.count") == 2 ]]'
+check 'any successful root response is accepted as ready' '[[ $STATUS == 0 ]] && [[ $(cat "$MUT_STATE/curl.count") == 1 ]]'
 
 reset_case; export HVM_PATH=/bin/true CURL_MODE=delayed CURL_READY_AT=4
 run_case delayed-ready
 pid=$(cat "$MUT_STATE/ollama.pid"); alive=0; kill -0 "$pid" 2>/dev/null && alive=1
 check 'delayed readiness starts Ollama and reaches Bend' '[[ $STATUS == 0 ]] && grep -q "^bend" "$MUT_LOG"'
-# `exec bend` replaces the trapped shell; terminate the deliberately detected orphan.
 (( alive == 1 )) && { kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; }
 
 reset_case; export HVM_PATH=/bin/true CURL_MODE=never
 run_case never-ready
-check 'bounded polling reports readiness failure' '[[ $STATUS == 1 ]] && [[ $(cat "$MUT_STATE/curl.count") == 62 ]] && grep -Fq "did not become ready" "$TMP/err"'
+check 'bounded polling reports readiness failure' '[[ $STATUS == 1 ]] && [[ $(cat "$MUT_STATE/curl.count") == 61 ]] && grep -Fq "did not become ready" "$TMP/err"'
 
 reset_case; export HVM_PATH=/bin/true CURL_MODE=never OLLAMA_MODE=dead
 run_case dead-child
-check 'early Ollama death is masked until readiness exhaustion' '[[ $STATUS == 1 ]] && [[ $(cat "$MUT_STATE/curl.count") == 62 ]]'
+check 'early Ollama death stops readiness polling immediately' '[[ $STATUS == 1 ]] && [[ $(cat "$MUT_STATE/curl.count") == 2 ]] && grep -Fq "owned Ollama exited during startup" "$TMP/err"'
 
 reset_case; export HVM_PATH=/bin/true CURL_MODE=delayed CURL_READY_AT=2
 run_case cleanup-after-exec
 pid=$(cat "$MUT_STATE/ollama.pid"); alive=0; kill -0 "$pid" 2>/dev/null && alive=1
-check 'exec bypasses EXIT cleanup and leaves owned Ollama alive' '[[ $STATUS == 0 ]] && [[ $alive == 1 ]]'
+check 'owned Ollama is stopped before returning after Bend' '[[ $STATUS == 0 ]] && [[ $alive == 0 ]]'
 (( alive == 1 )) && { kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; }
 
 reset_case; export HVM_PATH=/bin/true CURL_MODE=never SLEEP_GATE=$MUT_STATE/sleep.gate
@@ -131,7 +146,7 @@ PATH="$STUBS:/usr/local/bin:/usr/bin:/bin" "$ROOT/run.sh" signal-case >"$TMP/out
 for _ in $(seq 1 100); do [[ -e "$SLEEP_GATE" ]] && break; /usr/bin/sleep 0.01; done
 kill -TERM "$runner" 2>/dev/null || true
 set +e; wait "$runner"; STATUS=$?; set -e
-check 'TERM trap cleans child but does not terminate polling immediately' '[[ $STATUS == 1 ]] && grep -q "ollama-term" "$MUT_LOG" && [[ $(cat "$MUT_STATE/curl.count") == 62 ]]'
+check 'TERM trap cleans child and exits with signal status' '[[ $STATUS == 143 ]] && grep -q "ollama-term" "$MUT_LOG"'
 
 reset_case; export HVM_PATH=/bin/true CURL_MODE=ready BEND_EXIT=7
 run_case exit-seven
@@ -145,25 +160,31 @@ reset_case; export HVM_PATH=/bin/true CURL_MODE=ready MAKE_EXIT=2
 run_case build-failure
 check 'build failure stops transport before readiness and Bend' '[[ $STATUS == 2 ]] && ! grep -q "^curl\|^bend" "$MUT_LOG"'
 
-reset_case; export HVM_PATH=/bin/true CURL_MODE=ready JQ_EXIT=9
-run_case jq-failure
-check 'prompt encoding failure stops before Bend' '[[ $STATUS == 9 ]] && ! grep -q "^bend" "$MUT_LOG"'
+reset_case; export HVM_PATH=/bin/true CURL_MODE=ready
+long_prompt=$(printf 'x%.0s' $(seq 1 131073))
+long_prompt_hash=$(printf '%s' "$long_prompt" | sha256sum | awk '{print $1}')
+run_case "$long_prompt"
+check 'long prompts bypass Bend term-size encoding' '[[ $STATUS == 0 ]] && grep -Fq "prompt_file <" "$MUT_LOG" && grep -Fq "prompt_bytes <131073>" "$MUT_LOG" && grep -Fq "prompt_sha256 <'"$long_prompt_hash"'>" "$MUT_LOG"'
 
 reset_case; export HVM_PATH=/bin/true CURL_MODE=ready
 run_case 'quote " and' $'line\nbreak'
-check 'multi-argument prompt becomes one JSON-safe Bend argument' 'grep -Fq "<\"quote \\\" and line\\nbreak\">" "$MUT_LOG"'
+check 'multi-argument prompt reaches the bridge byte-for-byte' 'grep -Fq "prompt <quote \" and line" "$MUT_LOG" && grep -Fq "break>" "$MUT_LOG"'
+
+reset_case; export HVM_PATH=/bin/true CURL_MODE=ready
+run_case ''
+check 'explicit empty prompt argument remains explicit' 'grep -Fxq "prompt <>" "$MUT_LOG"'
 
 reset_case; unset HVM_PATH; export CARGO_HOME=$TMP/empty-cargo CURL_MODE=ready
 mkdir -p "$CARGO_HOME"
 run_case fallback-hvm
 check 'PATH hvm fallback is selected when registry pin is absent' '[[ $STATUS == 0 ]] && grep -Fq "<$STUBS/hvm>" "$MUT_LOG"'
 
-reset_case; export HVM_PATH=/bin/true CURL_MODE=hang
+reset_case; export HVM_PATH=/bin/true CURL_MODE=hang OLLAMA_READY_TIMEOUT=1 OLLAMA_READY_REQUEST_TIMEOUT=0.05 OLLAMA_READY_MAX_ATTEMPTS=2
 set +e
-/usr/bin/timeout -k 0.1 0.2 env PATH="$STUBS:/usr/local/bin:/usr/bin:/bin" "$ROOT/run.sh" hang-case >"$TMP/out" 2>"$TMP/err"
+PATH="$STUBS:/usr/local/bin:/usr/bin:/bin" "$ROOT/run.sh" hang-case >"$TMP/out" 2>"$TMP/err"
 STATUS=$?
 set -e
-check 'a hung readiness curl has no internal deadline' '[[ $STATUS == 124 || $STATUS == 137 ]] && ! grep -q "^bend" "$MUT_LOG"'
+check 'hung readiness curls are bounded by timeout and fail fast' '[[ $STATUS == 1 ]] && grep -Fq "did not become ready" "$TMP/err" && [[ $(cat "$MUT_STATE/curl.count") -le 3 ]]'
 
 printf '# pass=%d fail=%d\n' "$PASS" "$FAIL"
 rm -rf -- "$TMP"

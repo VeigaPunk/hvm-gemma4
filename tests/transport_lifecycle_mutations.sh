@@ -11,22 +11,47 @@ if [[ "$NAME" != transport_lifecycle_mutations.sh ]]; then
       exit "${MAKE_EXIT:-0}"
       ;;
     curl)
+      has_version_url=0
+      for arg in "$@"; do
+        [[ "$arg" == */api/version ]] && has_version_url=1
+      done
       count=0
       [[ -f "$MUT_STATE/curl.count" ]] && read -r count <"$MUT_STATE/curl.count"
       count=$((count + 1))
       printf '%s\n' "$count" >"$MUT_STATE/curl.count"
       printf 'curl %s\n' "$count" >>"$MUT_LOG"
       case "${CURL_MODE:-ready}" in
-        ready|false-positive) exit 0 ;;
+        ready|false-positive|identity)
+          if (( has_version_url )); then
+            printf '{"version":"9.9.9"}\n'
+          else
+            printf 'ollama is running\n'
+          fi
+          exit 0
+          ;;
+        wrong-identity)
+          printf '{"status":"ok"}\n'
+          exit 0
+          ;;
         never) exit 22 ;;
-        delayed) (( count >= ${CURL_READY_AT:-4} )) && exit 0 || exit 22 ;;
+        delayed)
+          if (( count >= ${CURL_READY_AT:-4} )); then
+            if (( has_version_url )); then
+              printf '{"version":"9.9.9"}\n'
+            else
+              printf 'ollama is running\n'
+            fi
+            exit 0
+          fi
+          exit 22
+          ;;
         hang) /usr/bin/sleep 10; exit 22 ;;
       esac
       ;;
     ollama)
       printf 'ollama %s\n' "$$" >>"$MUT_LOG"
-      printf 'env OLLAMA_MODELS=%s OLLAMA_FLASH_ATTENTION=%s OLLAMA_KV_CACHE_TYPE=%s OLLAMA_NUM_PARALLEL=%s OLLAMA_MAX_LOADED_MODELS=%s\n' \
-        "${OLLAMA_MODELS:-}" "${OLLAMA_FLASH_ATTENTION:-}" "${OLLAMA_KV_CACHE_TYPE:-}" "${OLLAMA_NUM_PARALLEL:-}" "${OLLAMA_MAX_LOADED_MODELS:-}" >>"$MUT_LOG"
+      printf 'env OLLAMA_MODELS=%s OLLAMA_FLASH_ATTENTION=%s OLLAMA_KV_CACHE_TYPE=%s OLLAMA_NUM_PARALLEL=%s OLLAMA_MAX_LOADED_MODELS=%s HVM_GEMMA_ENDPOINT=%s\n' \
+        "${OLLAMA_MODELS:-}" "${OLLAMA_FLASH_ATTENTION:-}" "${OLLAMA_KV_CACHE_TYPE:-}" "${OLLAMA_NUM_PARALLEL:-}" "${OLLAMA_MAX_LOADED_MODELS:-}" "${HVM_GEMMA_ENDPOINT:-}" >>"$MUT_LOG"
       printf '%s\n' "$$" >"$MUT_STATE/ollama.pid"
       [[ "${OLLAMA_MODE:-live}" == dead ]] && exit 23
       trap 'printf "ollama-term\n" >>"$MUT_LOG"; exit 0' TERM INT
@@ -36,6 +61,7 @@ if [[ "$NAME" != transport_lifecycle_mutations.sh ]]; then
       printf 'bend' >>"$MUT_LOG"
       printf ' <%s>' "$@" >>"$MUT_LOG"
       printf '\n' >>"$MUT_LOG"
+      printf 'HVM_GEMMA_ENDPOINT=%s\n' "${HVM_GEMMA_ENDPOINT:-}" >>"$MUT_LOG"
       printf 'prompt <%s>\n' "${HVM_GEMMA_PROMPT-__UNSET__}" >>"$MUT_LOG"
       if [[ -n "${HVM_GEMMA_PROMPT_FILE:-}" ]]; then
         printf 'prompt_file <%s>\n' "$HVM_GEMMA_PROMPT_FILE" >>"$MUT_LOG"
@@ -82,7 +108,7 @@ reset_case() {
   : >"$MUT_LOG"
   rm -f "$MUT_STATE"/*
   unset MAKE_EXIT CURL_MODE CURL_READY_AT OLLAMA_MODE BEND_VALIDATE_HVM BEND_STDOUT BEND_STDERR BEND_EXIT JQ_EXIT SLEEP_GATE
-  unset OLLAMA_READY_TIMEOUT OLLAMA_READY_MAX_ATTEMPTS OLLAMA_READY_INTERVAL OLLAMA_READY_REQUEST_TIMEOUT OLLAMA_CONNECT_TIMEOUT OLLAMA_MAX_TIME
+  unset OLLAMA_READY_TIMEOUT OLLAMA_READY_MAX_ATTEMPTS OLLAMA_READY_INTERVAL OLLAMA_READY_REQUEST_TIMEOUT OLLAMA_CONNECT_TIMEOUT OLLAMA_MAX_TIME OLLAMA_SHUTDOWN_GRACE
   unset OLLAMA_MODELS OLLAMA_FLASH_ATTENTION OLLAMA_KV_CACHE_TYPE OLLAMA_NUM_PARALLEL OLLAMA_MAX_LOADED_MODELS
 }
 
@@ -99,7 +125,7 @@ not_ok() { printf 'not ok %02d - %s\n' "$((PASS + FAIL + 1))" "$1"; FAIL=$((FAIL
 check() { if eval "$2"; then ok "$1"; else not_ok "$1"; fi; }
 
 set -e
-printf '1..18\n'
+printf '1..20\n'
 
 reset_case; export HVM_PATH=$TMP/not-executable CURL_MODE=ready
 run_case pin-bypass
@@ -109,7 +135,7 @@ reset_case; export HVM_PATH=$TMP/not-executable CURL_MODE=ready BEND_VALIDATE_HV
 run_case wrong-binary
 check 'downstream wrong-binary failure and status propagate' '[[ $STATUS == 66 ]] && grep -Fq "invalid HVM binary" "$TMP/err"'
 
-reset_case; export HVM_PATH=/bin/true CURL_MODE=ready
+reset_case; export HVM_PATH=/bin/true CURL_MODE=identity
 run_case already-ready
 check 'ready service bypasses Ollama startup' '! grep -q "^ollama " "$MUT_LOG" && grep -q "^bend" "$MUT_LOG"'
 
@@ -117,9 +143,9 @@ reset_case; export HVM_PATH=/bin/true CURL_MODE=delayed CURL_READY_AT=2 OLLAMA_M
 run_case env-overrides
 check 'server env overrides reach owned Ollama startup' 'grep -Fq "OLLAMA_MODELS=/custom/models" "$MUT_LOG" && grep -Fq "OLLAMA_FLASH_ATTENTION=0" "$MUT_LOG" && grep -Fq "OLLAMA_KV_CACHE_TYPE=q8_0" "$MUT_LOG" && grep -Fq "OLLAMA_NUM_PARALLEL=7" "$MUT_LOG" && grep -Fq "OLLAMA_MAX_LOADED_MODELS=3" "$MUT_LOG"'
 
-reset_case; export HVM_PATH=/bin/true CURL_MODE=false-positive
+reset_case; export HVM_PATH=/bin/true CURL_MODE=identity
 run_case false-positive
-check 'any successful root response is accepted as ready' '[[ $STATUS == 0 ]] && [[ $(cat "$MUT_STATE/curl.count") == 1 ]]'
+check 'api/version identity is accepted as ready' '[[ $STATUS == 0 ]] && [[ $(cat "$MUT_STATE/curl.count") == 1 ]]'
 
 reset_case; export HVM_PATH=/bin/true CURL_MODE=delayed CURL_READY_AT=4
 run_case delayed-ready
@@ -156,23 +182,33 @@ reset_case; export HVM_PATH=/bin/true CURL_MODE=ready BEND_STDOUT=OUT_SENTINEL B
 run_case streams
 check 'Bend stdout and stderr remain separated' 'grep -Fxq OUT_SENTINEL "$TMP/out" && grep -Fxq ERR_SENTINEL "$TMP/err" && ! grep -q ERR_SENTINEL "$TMP/out"'
 
+reset_case; export HVM_PATH=/bin/true CURL_MODE=identity OLLAMA_ENDPOINT=http://127.0.0.1:11434
+run_case endpoint-parity
+check 'bridge endpoint export matches readiness endpoint' '[[ $STATUS == 0 ]] && grep -Fq "HVM_GEMMA_ENDPOINT=http://127.0.0.1:11434" "$MUT_LOG"'
+
 reset_case; export HVM_PATH=/bin/true CURL_MODE=ready MAKE_EXIT=2
 run_case build-failure
 check 'build failure stops transport before readiness and Bend' '[[ $STATUS == 2 ]] && ! grep -q "^curl\|^bend" "$MUT_LOG"'
 
-reset_case; export HVM_PATH=/bin/true CURL_MODE=ready
-long_prompt=$(printf 'x%.0s' $(seq 1 131073))
-long_prompt_hash=$(printf '%s' "$long_prompt" | sha256sum | awk '{print $1}')
-run_case "$long_prompt"
-check 'long prompts bypass Bend term-size encoding' '[[ $STATUS == 0 ]] && grep -Fq "prompt_file <" "$MUT_LOG" && grep -Fq "prompt_bytes <131073>" "$MUT_LOG" && grep -Fq "prompt_sha256 <'"$long_prompt_hash"'>" "$MUT_LOG"'
+reset_case; export HVM_PATH=/bin/true CURL_MODE=wrong-identity
+run_case wrong-identity
+check 'readiness rejects non-Ollama identity responses' '[[ $STATUS == 1 ]] && grep -Fq "did not become ready" "$TMP/err"'
 
 reset_case; export HVM_PATH=/bin/true CURL_MODE=ready
+long_prompt=$(printf 'x%.0s' $(seq 1 5000))
+long_prompt_hash=$(printf '%s' "$long_prompt" | sha256sum | awk '{print $1}')
+run_case "$long_prompt"
+check 'long prompts bypass Bend term-size encoding' '[[ $STATUS == 0 ]] && grep -Fq "prompt_file <" "$MUT_LOG" && grep -Fq "prompt_bytes <5000>" "$MUT_LOG" && grep -Fq "prompt_sha256 <'"$long_prompt_hash"'>" "$MUT_LOG"'
+
+reset_case; export HVM_PATH=/bin/true CURL_MODE=ready
+multi_prompt=$'quote " and line\nbreak'
+multi_prompt_hash=$(printf '%s' "$multi_prompt" | sha256sum | awk '{print $1}')
 run_case 'quote " and' $'line\nbreak'
-check 'multi-argument prompt reaches the bridge byte-for-byte' 'grep -Fq "prompt <quote \" and line" "$MUT_LOG" && grep -Fq "break>" "$MUT_LOG"'
+check 'multi-argument prompt reaches the bridge byte-for-byte' 'grep -Fq "prompt_bytes <'"${#multi_prompt}"'>" "$MUT_LOG" && grep -Fq "prompt_sha256 <'"$multi_prompt_hash"'>" "$MUT_LOG"'
 
 reset_case; export HVM_PATH=/bin/true CURL_MODE=ready
 run_case ''
-check 'explicit empty prompt argument remains explicit' 'grep -Fxq "prompt <>" "$MUT_LOG"'
+check 'explicit empty prompt argument remains explicit' 'grep -Fq "prompt_file <" "$MUT_LOG" && grep -Fq "prompt_bytes <0>" "$MUT_LOG"'
 
 reset_case; unset HVM_PATH; export CARGO_HOME=$TMP/empty-cargo CURL_MODE=ready
 mkdir -p "$CARGO_HOME"

@@ -1,0 +1,8 @@
+{"round":1,"audit_hash":"sha256:af32db1f56de61c5213a0eda3c1b300aa811c888946b5ac34cba2d78319afe49","source_map_unseen":true,"evidence_audit":{"with":7,"without":0,"dropped":0,"spoof_flagged":0}}
+{"move_id":"X2R1-M01","verdict":"retain structural suite; block semantic claims"}
+{"move_id":"X2R1-M02","verdict":"retain/blocking implementation"}
+{"move_id":"X2R1-M03","verdict":"retain mutation frontier"}
+{"move_id":"X2R1-M04","verdict":"retain/block proxy semantic tests"}
+{"move_id":"X2R1-M05","verdict":"retain direct-vs-HVM first; defer proxy performance"}
+{"move_id":"X2R1-M06","verdict":"retain controlled execution design"}
+{"move_id":"X2R1-M07","verdict":"retain guardrails with local threshold calibration"}

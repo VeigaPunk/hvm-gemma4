@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "source": "benchmarks/run.sh",
+  "harness": "tests/benchmark_runner_mutations.sh",
+  "mutants": [
+    {"id":"M01","category":"semantic inversion","change":"manifest count mismatch predicate -ne -> -eq"},
+    {"id":"M02","category":"semantic inversion","change":"suite failure predicate -gt -> -eq"},
+    {"id":"M03","category":"dropped failures","change":"delete failed_count increment"},
+    {"id":"M04","category":"dropped failures","change":"replace runner status with zero"},
+    {"id":"M05","category":"route bypass","change":"replace configured runner invocation with shell no-op"},
+    {"id":"M06","category":"route bypass","change":"route calibration mode through heldout group"},
+    {"id":"M07","category":"cache mislabel","change":"swap cache before and after labels"},
+    {"id":"M08","category":"cache mislabel","change":"label after cache sample as both before and after"},
+    {"id":"M09","category":"digest omission","change":"emit empty model digest"},
+    {"id":"M10","category":"order leak","change":"reverse calibration order"},
+    {"id":"M11","category":"truncation pass","change":"truncate stdout before recording a successful case"},
+    {"id":"M12","category":"truncation pass","change":"force stdout byte count to zero"},
+    {"id":"M13","category":"retry asymmetry","change":"retry only a missing post-run digest"},
+    {"id":"M14","category":"sample reduction","change":"execute only first calibration case"},
+    {"id":"M15","category":"sample reduction","change":"execute only first heldout case"},
+    {"id":"M16","category":"resource omission","change":"emit empty cache diagnostics"}
+  ]
+}

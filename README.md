@@ -61,7 +61,8 @@ Replacing the tensor engine would mean a full Gemma 4 loader, tokenizer, quantiz
 | `HVM_GEMMA_KEEP_ALIVE` | Ollama model residency (default `10m`) |
 | `OLLAMA_ENDPOINT` | Ollama base URL (default `http://127.0.0.1:11434`) |
 | `HVM_GEMMA_ENDPOINT` | Bridge-specific Ollama URL override; takes precedence over `OLLAMA_ENDPOINT` |
-| `OLLAMA_NUM_PARALLEL` | Server parallel request slots when this script starts Ollama (default `128`) |
+| `OLLAMA_NUM_PARALLEL` | Server parallel request slots when this script starts Ollama (default `8`) |
+| `OLLAMA_KV_CACHE_TYPE` | KV-cache precision when this script starts Ollama (default `q8_0`) |
 | `OLLAMA_MODELS` | Ollama model store when this script starts Ollama (default `${XDG_CACHE_HOME:-$HOME/.cache}/ollama/models`) |
 | `HVM_PATH` | HVM binary for `bend --hvm-bin` |
 | `HVM_ROOT` | HVM crate source for `make` includes |

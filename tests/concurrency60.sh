@@ -3,6 +3,7 @@
 set -u
 MODEL=${MODEL:-gemma4:26b}
 N=${N:-60}
+export N
 OUT=${OUT:-/tmp/gemma_conc60}
 mkdir -p "$OUT"
 rm -f "$OUT"/*.json
@@ -20,11 +21,14 @@ one() {
 export MODEL OUT
 export -f one
 
-seq 1 "$N" | xargs -P "$N" -I{} bash -c 'one "$@"' _ {} > "$OUT/timings.txt" 2>&1
+seq 1 "$N" | xargs -P "$N" -I{} bash -c 'one "$@"' _ {} > "$OUT/timings.txt"
 
 echo "== summary =="
-awk '{ok+=($2==200); ms[NR]=$3} END {
-  asort(ms);
-  printf "total=%d ok=%d fail=%d\n", NR, ok, NR-ok;
-  printf "min=%dms p50=%dms p90=%dms max=%dms\n", ms[1], ms[int(NR*0.5)], ms[int(NR*0.9)], ms[NR];
+# Keep only well-formed "<idx> <http-code> <ms>" rows: curl stderr must never
+# leak into the data file (stderr is not redirected, but guard anyway).
+awk '/^[0-9]+ [0-9]{3} [0-9]+$/ {ok+=($2==200); ms[n++]=$3} END {
+  if (ok > 0) asort(ms);
+  printf "total=%d ok=%d fail=%d\n", n, ok, n-ok;
+  printf "min=%dms p50=%dms p90=%dms max=%dms\n", ms[1], ms[int((n+1)/2)], ms[int((90*n+99)/100)], ms[n];
+  if (n != ENVIRON["N"]) printf "WARNING: expected %d rows, got %d\n", ENVIRON["N"], n > "/dev/stderr";
 }' "$OUT/timings.txt"

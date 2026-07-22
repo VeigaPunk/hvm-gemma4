@@ -1,0 +1,1 @@
+{"move_id":"R2-M05","orchestrator_role":"executor","model_path":"openai-codex-responses/openai-codex/gpt-5.3-codex-spark","agent_profile_path":"/home/arara/.pi/agent/agents/executor.md","agent_profile_model_frontmatter":"openai-codex/gpt-5.3-codex-spark:low","assigned_to_executor":true}

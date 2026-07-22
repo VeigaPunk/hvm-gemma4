@@ -1,0 +1,2 @@
+WROTE=analysis/tuning/gemma4_e4b-np32.jsonl
+FAILED=0

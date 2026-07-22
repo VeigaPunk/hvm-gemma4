@@ -1,0 +1,3 @@
+== summary ==
+total=8 ok=8 fail=0
+min=1230ms p50=1264ms p90=1267ms max=1267ms

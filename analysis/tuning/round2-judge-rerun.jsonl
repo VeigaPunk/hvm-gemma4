@@ -1,0 +1,8 @@
+{"round":2,"rerun":true,"audit_hash":"sha256:16e61c152c3d39fa9b174a79897a06de2b1b020052c090b5c319345b408a81f4","source_map_unseen":true,"evidence_audit":{"with":7,"without":0,"dropped":0,"spoof_flagged":0}}
+{"move_id":"R2-M01","verdict":"retain provisional official-q4 default; reject superiority claim"}
+{"move_id":"R2-M02","verdict":"retain 32 as concise profile; reject 8; keep 256 general CLI default"}
+{"move_id":"R2-M03","verdict":"retain p4-q8/p8-q8 frontier; select p8-q8 for xbreed burst-tail reliability"}
+{"move_id":"R2-M04","verdict":"retain p8 scale evidence as moderate only"}
+{"move_id":"R2-M05","verdict":"retain request guardrails"}
+{"move_id":"R2-M06","verdict":"retain lifecycle hardening after current 25/25 rerun"}
+{"move_id":"R2-M07","verdict":"retain trace collector; block strong quality ranking"}

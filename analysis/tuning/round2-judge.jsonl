@@ -1,0 +1,8 @@
+{"round":2,"audit_hash":"sha256:b738c3a166d5033bbb3aea32c51159406d99900b489df6dcbda6dfe17ac41657","source_map_unseen":true,"evidence_audit":{"with":7,"without":0,"dropped":0,"spoof_flagged":0}}
+{"move_id":"R2-M01","verdict":"retain provisional official-q4 default; reject superiority claim","axes_improved":["default identity","route consistency"],"harm":"none observed"}
+{"move_id":"R2-M02","verdict":"retain 32 as safer concise profile; reject 8; keep 256 general CLI default","axes_improved":["latency-budget understanding","truncation safety"],"harm":"none"}
+{"move_id":"R2-M03","verdict":"retain p4-q8 and p8-q8 frontier; select p8-q8 for xbreed burst-tail reliability","axes_improved":["p90","max latency","high-concurrency throughput"],"harm":"p50 worse than p4-q8"}
+{"move_id":"R2-M04","verdict":"retain p8 scale evidence as moderate only","axes_improved":["60-way reliability","throughput"],"harm":"evidence reproducibility gap"}
+{"move_id":"R2-M05","verdict":"retain guardrails","axes_improved":["request mutation sensitivity"],"harm":"none"}
+{"move_id":"R2-M06","verdict":"retain lifecycle hardening after current 25/25 rerun","axes_improved":["cleanup","boundedness","route identity"],"harm":"minor launcher overhead"}
+{"move_id":"R2-M07","verdict":"retain harness only as trace collector; block strong quality ranking","axes_improved":["evidence integrity"],"harm":"none"}

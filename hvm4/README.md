@@ -15,6 +15,8 @@ This does **not** claim that Gemma tensor operations execute on HVM4.
 
 ## Run
 
+`run-hvm4.sh` defaults `HVM_GEMMA_MODEL` to `gemma4-hvm:a4b-q4-k-m`.
+
 ```sh
 HVM4_GEMMA_METRICS=1 ./run-hvm4.sh "Reply exactly: HVM4_OK"
 ```
@@ -28,7 +30,8 @@ HVM4_GEMMA_METRICS=1 ./run-hvm4.sh "Reply exactly: HVM4_OK"
 - HVM4 is invoked only as a scoped control runner: generated control program path + `-C1`.
 
 Requirements: built HVM4 at `$HVM4_ROOT` (default
-`/home/arara/Projects/HVM4`), Bend 0.2.38, Ollama, curl, and jq.
+`/home/arara/Projects/HVM4`), Bend 0.2.38, Ollama, curl, and jq; model identity
+provenance must match `gemma4-hvm:a4b-q4-k-m` (Q4_K_M, 25.2B).
 
 ## Mailbox substrate (BEND2)
 

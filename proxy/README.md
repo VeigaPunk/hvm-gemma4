@@ -9,11 +9,14 @@ and Pi (`openai-responses`) use. This is **not** Chat Completions as the main pa
 ```
 CLI (Codex wire_api=responses / Pi openai-responses / …)
   → http://127.0.0.1:11435/v1/responses
-  → gemma-hvm
-  → Bend → HVM2 → libhvm_gemma.so → Ollama
+  → gemma-hvm / run-hvm4.sh
+  → Bend 0.2.38 gen-hvm → HVM4 4.0 control gate → Ollama
 ```
 
 ## Run
+
+`run-proxy.sh` performs a fail-closed `check-hvm4-provenance.sh` startup check for
+`gemma4-hvm:a4b-q4-k-m` (Q4_K_M) before serving.
 
 ```sh
 ./run-proxy.sh
@@ -26,7 +29,7 @@ CLI (Codex wire_api=responses / Pi openai-responses / …)
 curl -s http://127.0.0.1:11435/v1/responses \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer xbreed-hvm' \
-  -d '{"model":"gemma4:26b","input":"say pong","stream":false}' \
+  -d '{"model":"gemma4-hvm:a4b-q4-k-m","input":"say pong","stream":false}' \
   | jq -r .output_text
 ```
 
@@ -35,7 +38,7 @@ curl -s http://127.0.0.1:11435/v1/responses \
 | CLI | Setting |
 |-----|---------|
 | Codex Titanium | `wire_api = "responses"`, provider `xbreed-hvm`, profile `gemma-hvm` |
-| Pi | `api: "openai-responses"`, `xbreed-hvm/gemma4:26b` |
+| Pi | `api: "openai-responses"`, provider `xbreed-hvm`, model `gemma4-hvm:a4b-q4-k-m` |
 | Kimi | OpenAI provider → same base URL (uses chat fallback if needed) |
 
 Env: `XBREED_HVM_API_KEY` (default `xbreed-hvm`), `HVM_GEMMA_MODEL`, `XBREED_HVM_PORT`.

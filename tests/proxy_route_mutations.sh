@@ -73,13 +73,13 @@ compile_mutant R01 direct-ollama-bypass 'spawn Ollama instead of the HVM entrypo
 
 compile_mutant R02 wrong-model 'replace the pinned default model' \
   replace_once \
-  'process.env.HVM_GEMMA_MODEL ?? "gemma4-hvm:official-q4"' \
+  'process.env.HVM_GEMMA_MODEL ?? "gemma4-hvm:a4b-q4-k-m"' \
   'process.env.HVM_GEMMA_MODEL ?? "gemma4:26b"'
 
 compile_mutant R03 wrong-model 'resolve HVM aliases to the wrong model' \
   replace_once \
-  $'  if (m === "gemma4:26b-hvm" || m === "xbreed-gemma" || m === "g-gemma") {\n    return DEFAULT_MODEL;\n  }' \
-  $'  if (m === "gemma4:26b-hvm" || m === "xbreed-gemma" || m === "g-gemma") {\n    return "gemma4:26b";\n  }'
+  '  ["gemma4:26b-hvm", CANONICAL_MODEL],' \
+  '  ["gemma4:26b-hvm", "gemma4:26b"],'
 
 compile_mutant R04 proxy-auth 'allow non-loopback startup without an API key' \
   delete_once \
@@ -115,17 +115,17 @@ compile_mutant R10 prompt-corruption 'coerce every message role to user' \
 
 compile_mutant R11 timeout 'inflate the route timeout by another factor of 1000' \
   replace_once \
-  'Number(process.env.XASK_TIMEOUT_SECS ?? 600) * 1000' \
-  'Number(process.env.XASK_TIMEOUT_SECS ?? 600) * 1000 * 1000'
+  '  ) * 1000;' \
+  '  ) * 1000 * 1000;'
 
 compile_mutant R12 timeout 'interpret timeout seconds as milliseconds' \
   replace_once \
-  'Number(process.env.XASK_TIMEOUT_SECS ?? 600) * 1000' \
-  'Number(process.env.XASK_TIMEOUT_SECS ?? 600)'
+  '  ) * 1000;' \
+  '  );'
 
 compile_mutant R13 cancellation 'leave the child alive when the timeout fires' \
   replace_once \
-  '      proc.kill();' \
+  '      proc.kill("SIGTERM");' \
   '      void proc.pid;'
 
 compile_mutant R14 cancellation 'cancel the timeout before waiting for the child' \

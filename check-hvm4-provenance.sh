@@ -3,7 +3,7 @@ set -euo pipefail
 
 MODEL_TAG=${MODEL_TAG:-"gemma4-hvm:a4b-q4-k-m"}
 ENDPOINT=${HVM_GEMMA_ENDPOINT:-${OLLAMA_ENDPOINT:-http://127.0.0.1:11434}}
-GGUF_SOURCE_PATH=${GGUF_SOURCE_PATH:-"${XDG_DATA_HOME:-$HOME/.local/share}/hvm-gemma4/models/google-gemma-4-26B-A4B-it-qat-q4_0/gemma-4-26B_q4_0-it.gguf"}
+GGUF_SOURCE_PATH=${GGUF_SOURCE_PATH:-"$HOME/models/gemma-4-26B-A4B-it-Q4_K_M.gguf"}
 SCRIPT_SOURCE_SHA256=${SCRIPT_SOURCE_SHA256:-"9b80864609ad06712727eb3ec0ef5d06fe8c2c781bb5a09558ac5c6031b7ecb3"}
 EXPECTED_TAG_DIGEST=${EXPECTED_TAG_DIGEST:-"d23853cf4d7858342b66aeadc47258ce68f348ccc0dd5c757065844a7b6266a8"}
 
@@ -31,20 +31,23 @@ fi
 
 request=$(jq -c -n --arg model "$MODEL_TAG" '{name:$model}')
 response=$(mktemp)
-trap 'rm -f "$response"' EXIT
+tags_response=$(mktemp)
+trap 'rm -f "$response" "$tags_response"' EXIT
 
 if ! curl -fsS -H 'Content-Type: application/json' --data-binary "$request" "$ENDPOINT/api/show" >"$response"; then
   echo "HVM4_PROVENANCE_ERROR: failed to query $ENDPOINT/api/show for $MODEL_TAG" >&2
   exit 1
 fi
-
-if ! jq -e '.["name"] or .details.model' "$response" >/dev/null 2>&1; then
-  # tolerate shape shifts, but require valid JSON for fail-closed behavior
+if ! jq -e '.details | type == "object"' "$response" >/dev/null 2>&1; then
   echo "HVM4_PROVENANCE_ERROR: invalid ollama show response for $MODEL_TAG" >&2
   exit 1
 fi
+if ! curl -fsS "$ENDPOINT/api/tags" >"$tags_response"; then
+  echo "HVM4_PROVENANCE_ERROR: failed to query $ENDPOINT/api/tags" >&2
+  exit 1
+fi
 
-tag_digest=$(jq -r '.details.digest // .modelinfo.digest // .model_info.digest // .digest // empty' "$response")
+tag_digest=$(jq -r --arg model "$MODEL_TAG" '.models[] | select(.name == $model or .model == $model) | .digest' "$tags_response" | head -n1)
 quantization=$(jq -r '.details.quantization_level // empty' "$response")
 parameter_size=$(jq -r '.details.parameter_size // empty' "$response")
 

@@ -172,7 +172,7 @@ assert_body() {
 run_case() {
   local label=$1
   local expected_endpoint=${2:-http://127.0.0.1:11434}
-  local expected_model=${3:-gemma4:26b-hvm4}
+  local expected_model=${3:-gemma4-hvm:a4b-q4-k-m}
   local expected_num_ctx=${4:-2048}
   local expected_num_predict=${5:-96}
   local expected_temperature=${6:-0.2}
@@ -273,7 +273,7 @@ run_invalid_case() {
     HVM4_GEMMA_HTTP_TIMEOUT=2
     HVM4_GEMMA_NUM_PREDICT=96
     HVM_GEMMA_ENDPOINT=http://127.0.0.1:11434
-    HVM_GEMMA_MODEL=gemma4:26b-hvm4
+    HVM_GEMMA_MODEL=gemma4-hvm:a4b-q4-k-m
     HVM_GEMMA_NUM_CTX=2048
     HVM_GEMMA_TEMPERATURE=0.2
     HVM_GEMMA_SEED=42
@@ -308,7 +308,7 @@ run_invalid_case() {
   PASS=$((PASS + 1))
 }
 
-printf '1..12\n'
+printf '1..13\n'
 run_case 'request shape: endpoint/model/knobs/system and generated control execution'
 run_invalid_case 'invalid: endpoint must be http(s) URL' 'HVM_GEMMA_ENDPOINT=bad endpoint'
 run_invalid_case 'invalid: model must be non-empty non-whitespace' "HVM_GEMMA_MODEL=bad model"

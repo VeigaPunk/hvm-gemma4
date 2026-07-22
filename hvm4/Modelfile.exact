@@ -3,4 +3,4 @@
 # - Canonical Ollama tag: gemma4-hvm:a4b-q4-k-m
 # - Tag digest expectation: d23853cf4d7858342b66aeadc47258ce68f348ccc0dd5c757065844a7b6266a8
 # - GGUF metadata target: Q4_K_M / 25.2B
-FROM /home/arara/.local/share/hvm-gemma4/models/google-gemma-4-26B-A4B-it-qat-q4_0/gemma-4-26B_q4_0-it.gguf
+FROM /home/arara/models/gemma-4-26B-A4B-it-Q4_K_M.gguf

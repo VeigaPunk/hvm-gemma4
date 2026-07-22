@@ -7,25 +7,42 @@
  * Path:  HTTP /v1/*  →  gemma-hvm  →  Bend → HVM2 → Ollama
  */
 
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 const PORT = Number(process.env.XBREED_HVM_PORT ?? 11435);
 const HOST = process.env.XBREED_HVM_HOST ?? "127.0.0.1";
-const GEMMA_BIN = process.env.HVM_GEMMA_BIN ?? "gemma-hvm";
-const DEFAULT_MODEL = process.env.HVM_GEMMA_MODEL ?? "gemma4-hvm:official-q4";
-const USE_XBREED = (process.env.XBREED_HVM_VIA ?? "gemma-hvm") === "xbreed";
-const TIMEOUT_MS = Number(process.env.XASK_TIMEOUT_SECS ?? 600) * 1000;
+const PROJECT_ROOT = path.dirname(fileURLToPath(import.meta.url));
+const GEMMA_HVM4_RUNNER = path.resolve(PROJECT_ROOT, "..", "run-hvm4.sh");
+const GEMMA_BIN = process.env.HVM_GEMMA_BIN ?? GEMMA_HVM4_RUNNER;
+const DEFAULT_MODEL = process.env.HVM_GEMMA_MODEL ?? "gemma4-hvm:a4b-q4-k-m";
+const XBREED_MODE = (process.env.XBREED_HVM_VIA ?? "gemma-hvm4").toLowerCase();
+const USE_XBREED = XBREED_MODE === "xbreed";
+const RAW_TIMEOUT_SECS = Number(process.env.XASK_TIMEOUT_SECS ?? 600);
+const TIMEOUT_MS =
+  Math.min(
+    Math.max(Number.isFinite(RAW_TIMEOUT_SECS) && RAW_TIMEOUT_SECS > 0 ? RAW_TIMEOUT_SECS : 600, 1),
+    1800,
+  ) * 1000;
 const BEARER = process.env.XBREED_HVM_API_KEY ?? "";
 const LOOPBACK_HOST = HOST === "127.0.0.1" || HOST === "::1" || HOST === "localhost";
 if (!LOOPBACK_HOST && !BEARER) {
   throw new Error("XBREED_HVM_API_KEY is required when binding outside loopback");
 }
 
-const MODEL_CATALOG = [
-  "gemma4:26b",
-  "gemma4-hvm:official-q4",
-  "gemma4:12b",
-  "gemma4:e4b",
-  "gemma4:26b-hvm",
-] as const;
+const CANONICAL_MODEL = "gemma4-hvm:a4b-q4-k-m";
+const MODEL_ALIASES = new Map<string, string>([
+  [CANONICAL_MODEL, CANONICAL_MODEL],
+  ["gemma4:26b", CANONICAL_MODEL],
+  ["gemma4:26b-hvm", CANONICAL_MODEL],
+  ["gemma4-hvm:a4b-q4-k-m", CANONICAL_MODEL],
+  ["gemma4-hvm:official-q4", CANONICAL_MODEL],
+  ["xbreed-gemma", CANONICAL_MODEL],
+  ["g-gemma", CANONICAL_MODEL],
+]);
+const MODEL_CATALOG = [CANONICAL_MODEL, ...MODEL_ALIASES.keys()]
+  .filter((id, i, arr) => arr.indexOf(id) === i)
+  .sort();
 
 type ContentPart =
   | { type?: string; text?: string; content?: string }
@@ -145,12 +162,31 @@ function stripHvmStats(stdout: string): string {
   return lines.join("\n").trimEnd();
 }
 
-function resolveModel(requested?: string): string {
-  const m = (requested ?? DEFAULT_MODEL).trim() || DEFAULT_MODEL;
-  if (m === "gemma4:26b-hvm" || m === "xbreed-gemma" || m === "g-gemma") {
-    return DEFAULT_MODEL;
+class TimeoutError extends Error {
+  constructor() {
+    super("HVM runner timed out");
+    this.name = "TimeoutError";
   }
-  return m;
+}
+
+function resolveModel(requested?: string): string {
+  const requestedModel = (requested ?? DEFAULT_MODEL).trim();
+  const normalized = requestedModel || CANONICAL_MODEL;
+  const canonical = MODEL_ALIASES.get(normalized);
+  if (!canonical) {
+    throw new Error(`Unsupported model ${normalized}; allowed: ${MODEL_CATALOG.join(", ")}`);
+  }
+  return canonical;
+}
+
+function errorStatusFromCause(err: unknown): number {
+  if (err instanceof TimeoutError) return 504;
+  return 502;
+}
+
+function errorTypeFromCause(err: unknown): string {
+  if (err instanceof TimeoutError) return "timeout";
+  return "hvm_error";
 }
 
 async function runThroughHvm(prompt: string, model: string): Promise<string> {
@@ -164,12 +200,22 @@ async function runThroughHvm(prompt: string, model: string): Promise<string> {
       })
     : Bun.spawn([GEMMA_BIN, prompt], { env, stdout: "pipe", stderr: "pipe" });
 
+  let killedByTimeout = false;
+  let hardKillTimer: ReturnType<typeof setTimeout> | null = null;
   const timer = setTimeout(() => {
+    killedByTimeout = true;
     try {
-      proc.kill();
+      proc.kill("SIGTERM");
     } catch {
       /* ignore */
     }
+    hardKillTimer = setTimeout(() => {
+      try {
+        proc.kill("SIGKILL");
+      } catch {
+        /* ignore */
+      }
+    }, 1000);
   }, TIMEOUT_MS);
 
   const [stdout, stderr, code] = await Promise.all([
@@ -178,7 +224,13 @@ async function runThroughHvm(prompt: string, model: string): Promise<string> {
     proc.exited,
   ]);
   clearTimeout(timer);
+  if (hardKillTimer !== null) {
+    clearTimeout(hardKillTimer);
+  }
 
+  if (killedByTimeout) {
+    throw new TimeoutError();
+  }
   if (code !== 0) {
     const err = stderr.trim() || stdout.trim() || `exit ${code}`;
     throw new Error(`HVM gemma failed: ${err}`);
@@ -327,7 +379,13 @@ const server = Bun.serve({
         );
       }
 
-      const model = resolveModel(body.model);
+      let model: string;
+      try {
+        model = resolveModel(body.model);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return json({ error: { message: msg, type: "invalid_request_error" } }, 400);
+      }
       let prompt = "";
       if (body.input !== undefined && body.input !== null) {
         prompt = responsesInputToPrompt(body.input);
@@ -349,7 +407,11 @@ const server = Bun.serve({
         return json(responsesResponse(model, text || "(empty HVM response)"));
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        return json({ error: { message: msg, type: "hvm_error" } }, 502);
+        const status = errorStatusFromCause(e);
+        return json(
+          { error: { message: msg, type: errorTypeFromCause(e) } },
+          status,
+        );
       }
     }
 
@@ -380,7 +442,13 @@ const server = Bun.serve({
           400,
         );
       }
-      const model = resolveModel(body.model);
+      let model: string;
+      try {
+        model = resolveModel(body.model);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return json({ error: { message: msg, type: "invalid_request_error" } }, 400);
+      }
       const prompt =
         body.messages?.length
           ? messagesToPrompt(body.messages)
@@ -393,7 +461,11 @@ const server = Bun.serve({
         return json(chatResponse(model, content || "(empty HVM response)"));
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        return json({ error: { message: msg, type: "hvm_error" } }, 502);
+        const status = errorStatusFromCause(e);
+        return json(
+          { error: { message: msg, type: errorTypeFromCause(e) } },
+          status,
+        );
       }
     }
 

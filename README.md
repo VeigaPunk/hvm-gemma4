@@ -29,7 +29,7 @@ The legacy path remains available through `run-hvm2.sh` and `run-tuned.sh`.
 ## Quick start
 
 ```sh
-# HVM4 default (model default: gemma4:26b-hvm4)
+# HVM4 default (model default: gemma4-hvm:a4b-q4-k-m, Q4_K_M provenance)
 ./run.sh "Explain mixture-of-experts routing in one sentence."
 
 # Legacy HVM2/Bend+dylib path
@@ -47,7 +47,7 @@ xask gemma "one-word reply: pong"
 Select another Ollama model without rebuilding:
 
 ```sh
-HVM_GEMMA_MODEL=gemma4:26b-hvm4 ./run.sh "Your prompt"
+HVM_GEMMA_MODEL=gemma4-hvm:a4b-q4-k-m ./run.sh "Your prompt"
 HVM_GEMMA_MODEL=gemma4-hvm:official-q4 ./run-hvm2.sh "Your prompt"
 ```
 
@@ -59,7 +59,7 @@ prompt
   → HVM2
   → IO/DyLib → build/libhvm_gemma.so (gemma_generate)
   → HTTP POST http://127.0.0.1:11434/api/generate
-  → local gemma4-hvm:official-q4 (or HVM_GEMMA_MODEL)
+  → local gemma4-hvm:a4b-q4-k-m (or HVM_GEMMA_MODEL)
 ```
 
 Replacing the tensor engine would mean a full Gemma 4 loader, tokenizer, quantized ops, mixed attention, KV cache, MoE router, sampler, and conformance suite **inside** HVM. This bridge deliberately does not do that.
@@ -76,7 +76,7 @@ Replacing the tensor engine would mean a full Gemma 4 loader, tokenizer, quantiz
 
 | Variable | Role |
 |----------|------|
-| `HVM_GEMMA_MODEL` | Ollama model name (default `gemma4-hvm:official-q4`) |
+| `HVM_GEMMA_MODEL` | Ollama model name (default `gemma4-hvm:a4b-q4-k-m`; legacy `run-hvm2` default `gemma4-hvm:official-q4`) |
 | `HVM_GEMMA_NUM_CTX` | Context window (default `2048`, minimum `128`) |
 | `HVM_GEMMA_NUM_PREDICT` | Output-token cap (default `256`, minimum `1`) |
 | `HVM_GEMMA_TEMPERATURE` | Sampling temperature (default `0`, range `0..2`) |

@@ -60,3 +60,34 @@
 - Evidence-backed audit surface is largely source-test + artifact-backed; several contract/documentation mismatches remain open and uncorrected.
 - **Do not claim completion**: cross-file default coherence and identity-binding gaps persist in docs/README/proxy/launcher consistency, and benchmark quality semantics are still route/oracle-limited.
 - This file is evidence-only and should be treated as draft protocol trace, not a release-ready closure.
+
+## Final Round 4 (Audit Trail)
+- **Actual final diffs since Round-3 evidence snapshot:**
+  - Tracked files changed in this final pass: `benchmarks/manifest.json`, `benchmarks/run.sh`, `hvm_gemma.c`, `proxy/run-proxy.sh`, `proxy/src/server.ts`, `tests/benchmark_runner_mutations.sh`, `tests/generation_option_mutations.sh`, `tests/generation_option_request_oracle.sh`, `tests/semantic_runner_mutant_catalog.sh`, `tuned.env`, `benchmarks/measure-1000-hvm.sh`, `benchmarks/hvm-metrics-proxy.ts`.
+  - `.xbreed/mailbox/events.ndjson` is untracked evidence capture (mailbox trail extension).
+  - `git diff --stat` on the tracked files is `173 insertions(+), 100 deletions(-)` across 10 files.
+- **Verification commands executed (this final round):**
+  - `cd proxy && npm run typecheck` → **pass** (exit 0).
+  - `bash tests/run_hvm4_request_shape.sh` → **pass=13 fail=0**.
+  - `bash tests/transport_lifecycle_mutations.sh` → **pass=27 fail=0**.
+  - `bash tests/generation_option_request_oracle.sh` → **pass=21 fail=0**.
+  - `bash tests/benchmark_manifest.sh` → `BENCHMARK_MANIFEST_OK count=24 hash=...`
+  - `bash tests/generation_option_mutations.sh` → **pass=18 fail=0** (all mutations currently survived).
+  - `bash tests/benchmark_runner_mutations.sh` → **pass=16 fail=0**.
+  - `bash tests/semantic_runner_mutant_catalog.sh` → **no diff output** (empty file changed in round marker only).
+  - `bash check-hvm4-provenance.sh` → **fail**: `HVM4_PROVENANCE_ERROR: source GGUF missing: /home/arara/.local/share/hvm-gemma4/models/google-gemma-4-26B-A4B-it-qat-q4_0/gemma-4-26B_q4_0-it.gguf`.
+- **Mailbox capture (final):**
+  - Command written: `xbreed team mailbox write --from=scribe-r4 --kind=finding --payload='{ "task": "hvm4-bend2-gemma4-a4b-final-round-4", "round": "4", "axis": "final_audit_trail", "report": "/home/arara/hvm-gemma4/docs/reports/hvm4-bend2-gemma4-a4b-r3-2026-07-22.md", "status": "final_round_audit" }'`
+  - Captured entry in `.xbreed/mailbox/events.ndjson` from `scribe-r4` with `from=scribe-r4`, `event_type=finding`, `status=final_round_audit`.
+- **End-to-end result (Round-4):**
+  - `labrat-r4` live probe recorded `proxy` default-model path responding 200 on `/v1/responses`, `/v1/models` count=7, and 400 for invalid model; `responses` returned model `gemma4:26b-hvm4` with output `OK`.
+  - Route/auth/shape/lifecycle checks are passing, but **not all final gates are closed** (see remaining limitations).
+- **Remaining limitations (honest, open):**
+  - `run_hvm4_request_shape.sh` TAP plan corrected by execution but still historically reported a plan mismatch history; current Round-4 evidence run emits 13 assertions.
+  - **Canonical model contract is still split** across `run-hvm4.sh`, `proxy/run-proxy.sh`, `proxy/src/server.ts` (`DEFAULT_MODEL`), and docs/examples (connector r4 findings).
+  - `check-hvm4-provenance.sh` fails in this environment due missing expected GGUF source path.
+  - `generation_option_mutations.sh` and `benchmark_runner_mutations.sh` are mutation harnesses; they indicate potential probe/observability gaps rather than production-safe closure.
+  - No universal performance/quality claims retained for Round-4; evidence remains route-scoped.
+- **Honest Bend 0.2.38 / HVM4 scope statement:**
+  - Scope covered is **runtime-path, startup/auth/lifecycle/proxy-call integrity** and test-harness signal correctness for Bend 0.2.38 + HVM4 integration.
+  - Scope explicitly excludes claimed global benchmark dominance and excludes fully proven artifact binding of model tag→local GGUF→runtime digest; this remains open until provenance script is satisfied in the same environment.

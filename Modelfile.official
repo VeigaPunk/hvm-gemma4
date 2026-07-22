@@ -1,0 +1,4 @@
+FROM /home/arara/models/google-gemma-4-26B-A4B-it-qat-q4_0/gemma-4-26B_q4_0-it.gguf
+
+PARAMETER temperature 0
+PARAMETER num_ctx 2048

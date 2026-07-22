@@ -1,0 +1,20 @@
+# build artifacts
+build/
+*.so
+.out.hvm
+*.o
+
+# local model weights (never commit)
+*.gguf
+models/
+weights/
+
+# logs / runtime
+*.log
+ollama.log
+
+# editor / OS
+.DS_Store
+*~
+.idea/
+.vscode/

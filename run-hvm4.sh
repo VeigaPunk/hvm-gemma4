@@ -203,6 +203,14 @@ else
   THINK_JSON=$THINK
 fi
 
+# Ollama keep_alive is a duration string ("10m") OR a number of seconds (-1 = never
+# unload); quoting the numeric form fails with: time: missing unit in duration "-1"
+if [[ "$KEEP_ALIVE" =~ ^-?[0-9]+$ ]]; then
+  KEEP_ALIVE_JSON=$KEEP_ALIVE
+else
+  KEEP_ALIVE_JSON=$(jq -nc --arg v "$KEEP_ALIVE" '$v')
+fi
+
 umask 077
 REQUEST_FILE=$(mktemp)
 RESPONSE_FILE=$(mktemp)
@@ -245,7 +253,7 @@ jq -nc \
   --arg model "$MODEL" \
   --arg prompt "$PROMPT" \
   --arg system "$SYSTEM" \
-  --arg keep_alive "$KEEP_ALIVE" \
+  --argjson keep_alive "$KEEP_ALIVE_JSON" \
   --argjson num_ctx "$NUM_CTX" \
   --argjson num_predict "$NUM_PREDICT" \
   --argjson temperature "$TEMPERATURE" \

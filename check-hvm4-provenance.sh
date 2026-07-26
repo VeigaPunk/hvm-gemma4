@@ -6,6 +6,8 @@ ENDPOINT=${HVM_GEMMA_ENDPOINT:-${OLLAMA_ENDPOINT:-http://127.0.0.1:11434}}
 GGUF_SOURCE_PATH=${GGUF_SOURCE_PATH:-"$HOME/models/gemma-4-26B-A4B-it-Q4_K_M.gguf"}
 SCRIPT_SOURCE_SHA256=${SCRIPT_SOURCE_SHA256:-"9b80864609ad06712727eb3ec0ef5d06fe8c2c781bb5a09558ac5c6031b7ecb3"}
 EXPECTED_TAG_DIGEST=${EXPECTED_TAG_DIGEST:-"d23853cf4d7858342b66aeadc47258ce68f348ccc0dd5c757065844a7b6266a8"}
+EXPECTED_QUANTIZATION=${EXPECTED_QUANTIZATION:-"Q4_K_M"}
+EXPECTED_PARAMETER_SIZE=${EXPECTED_PARAMETER_SIZE:-"25.2B"}
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -60,12 +62,12 @@ if [[ "$tag_digest" != "$EXPECTED_TAG_DIGEST" ]]; then
   exit 1
 fi
 
-if [[ "$quantization" != "Q4_K_M" ]]; then
-  echo "HVM4_PROVENANCE_ERROR: unexpected quantization for $MODEL_TAG (found '$quantization', expected 'Q4_K_M')" >&2
+if [[ "$quantization" != "$EXPECTED_QUANTIZATION" ]]; then
+  echo "HVM4_PROVENANCE_ERROR: unexpected quantization for $MODEL_TAG (found '$quantization', expected '$EXPECTED_QUANTIZATION')" >&2
   exit 1
 fi
-if [[ "$parameter_size" != "25.2B" ]]; then
-  echo "HVM4_PROVENANCE_ERROR: unexpected parameter_size for $MODEL_TAG (found '$parameter_size', expected '25.2B')" >&2
+if [[ "$parameter_size" != "$EXPECTED_PARAMETER_SIZE" ]]; then
+  echo "HVM4_PROVENANCE_ERROR: unexpected parameter_size for $MODEL_TAG (found '$parameter_size', expected '$EXPECTED_PARAMETER_SIZE')" >&2
   exit 1
 fi
 

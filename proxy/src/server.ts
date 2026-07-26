@@ -33,7 +33,7 @@ if (!LOOPBACK_HOST && !BEARER) {
   throw new Error("XBREED_HVM_API_KEY is required when binding outside loopback");
 }
 
-const CANONICAL_MODEL = "gemma4-hvm:a4b-q4-k-m";
+const CANONICAL_MODEL = DEFAULT_MODEL;
 const MODEL_ALIASES = new Map<string, string>([
   [CANONICAL_MODEL, CANONICAL_MODEL],
   ["gemma4:26b", CANONICAL_MODEL],

@@ -42,7 +42,7 @@ events.ndjson → Bend keep source-of-record → HVM4 IR lowerer → HVM4 -C1 �
 ```
 
 - Source of record: [`mailbox.bend`](mailbox.bend) (keep kinds 1..4)
-- Entrypoint: [`mailbox-bend2.sh`](mailbox-bend2.sh) → xbreed `scripts/mailbox-hvm4.sh`
+- Entrypoint shim (deprecated): [`mailbox-bend2.sh`](mailbox-bend2.sh)
 - CLI: `xbreed team mailbox compact --hvm4` (or `XBREED_MAILBOX_BACKEND=hvm4`)
 - Connector: `xbreed team mailbox connect` (Gemma/HVM synthesizer over the live socket)
 

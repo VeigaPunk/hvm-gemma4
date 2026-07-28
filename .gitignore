@@ -18,3 +18,4 @@ proxy/node_modules/
 *.so
 .vscode/
 weights/
+.xbreed/
